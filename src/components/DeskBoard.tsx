@@ -15,6 +15,7 @@ import {
   fetchOpenBook,
   fmtPct,
   fmtUsd,
+  protectHeldPosition,
   runDeskPass,
   type DeskDayState,
   type DeskRank,
@@ -437,6 +438,36 @@ export default function DeskBoard() {
               description:
                 (data && "error" in data && data.error) || positionsError || "Unknown",
             });
+          }
+        }}
+        onProtect={async (input) => {
+          if (input.live) {
+            const ok = confirm(
+              `Protect LIVE ${input.symbol}?\n\nNo new buy. Worker sells on ~1.5% hard stop, trail, or EOD.\nNeeds ROBINHOOD_LIVE_TRADING for real exits.`
+            );
+            if (!ok) return;
+          }
+          try {
+            const out = (await protectHeldPosition(input)) as {
+              error?: string;
+              message?: string;
+              levels?: { stop?: number };
+              plan?: { levels?: { stop?: number } };
+            };
+            if (out.error) throw new Error(String(out.error));
+            const stop = out.levels?.stop ?? out.plan?.levels?.stop;
+            toast.success(input.live ? "Protect live armed" : "Protect preview armed", {
+              description: [
+                out.message || input.symbol,
+                stop != null ? `stop $${stop}` : null,
+                "see play-by-play",
+              ]
+                .filter(Boolean)
+                .join(" · "),
+            });
+            setPlayRefreshToken((n) => n + 1);
+          } catch (e) {
+            toast.error("Protect failed", { description: (e as Error).message });
           }
         }}
       />

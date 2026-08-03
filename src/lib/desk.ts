@@ -386,56 +386,77 @@ export async function armDeskPlay(input: {
 }) {
   const { rank, notionalUsd, live } = input;
   const thesisPct = Math.round((rank.agentExpectedReturn || 0.03) * 100);
+  const entry = rank.price != null && Number.isFinite(Number(rank.price))
+    ? Number(rank.price)
+    : undefined;
+  // Climax accelerator: real stop (~1.5%) + trail — not a naked buy with empty levels.
   const res = await fetch("/api/ceo", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       action: "arm-plan",
+      climax: true,
       dryRun: !live,
       confirm: live,
       symbol: rank.symbol,
       idea: {
         id: rank.id,
         symbol: rank.symbol,
-        kind: rank.strategy === "desk" ? "primary_equity" : rank.strategy,
+        kind: "accelerator",
         side: rank.side || "long",
-        strategy: rank.strategy,
+        strategy: rank.strategy || "desk",
         title: `${rank.industryLabel} · ${rank.symbol} ${rank.side}`,
         notionalHint: notionalUsd,
-        agentExpectedReturn: rank.agentExpectedReturn,
-        levels: {},
+        agentExpectedReturn: rank.agentExpectedReturn || 0.03,
+        levels: entry != null ? { entry } : {},
         schedule: {
           due_label: rank.due,
           horizon: rank.horizon,
-          // Backend defers live opens to next RTH when armed off-hours / Sunday
           open_when: "next_rth_if_closed",
         },
-        execution_plan: {
-          steps: [
-            {
-              id: "open_equity",
-              phase: "open",
-              title: `Open ${rank.symbol}`,
-              agent_action: "review_equity_order_then_place",
-              order_kind: "equity",
-              notional_usd: notionalUsd,
-            },
-            {
-              id: "monitor_position",
-              phase: "monitor",
-              title: "Monitor position / tape",
-              agent_action: "poll_quotes_and_compare_levels",
-            },
-            {
-              id: "close_manage",
-              phase: "close",
-              title: "Close early, on target, or by time",
-              agent_action: "close_at_stop_target_or_deadline",
-            },
-          ],
+        accelerator: {
+          mode: "climax",
+          maxNotionalUsd: notionalUsd,
+          targetPct: 0.01,
+          stretchPct: 0.03,
+          stopPct: 0.015,
         },
+        layman_directive:
+          `${rank.industryLabel} ${rank.symbol}: buy once, then worker manages stop/trail/time`
+          + ` (~${thesisPct}% thesis · ${rank.horizon}). Not a naked hold.`,
         thesis: `${rank.industryLabel} ${rank.strategy} · ~${thesisPct}% · ${rank.horizon}`,
       },
+    }),
+  });
+  return readJson(res);
+}
+
+/** Arm stop/trail on shares you already hold — no new buy. */
+export async function protectHeldPosition(input: {
+  symbol: string;
+  avgCost?: number | null;
+  mark?: number | null;
+  quantity?: number | null;
+  marketValue?: number | null;
+  live: boolean;
+}) {
+  const res = await fetch("/api/ceo", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "protect-held",
+      protectHeld: true,
+      dryRun: !input.live,
+      confirm: input.live,
+      symbol: input.symbol,
+      entry: input.avgCost,
+      avgCost: input.avgCost,
+      mark: input.mark,
+      quantity: input.quantity,
+      marketValue: input.marketValue,
+      stopPct: 0.015,
+      targetPct: 0.01,
+      stretchPct: 0.03,
     }),
   });
   return readJson(res);
