@@ -32,6 +32,8 @@ export type RhLivePosition = {
   side: string;
   avgCost: number | null;
   marketValue: number | null;
+  /** Last trade / mark from Agentic portfolio when present. */
+  lastPrice: number | null;
 };
 
 function extractPositionRows(payload: unknown): Record<string, unknown>[] {
@@ -78,12 +80,27 @@ export async function fetchLivePositions(): Promise<{
     if (!sym || !Number.isFinite(qty) || qty === 0) continue;
     const avg = Number(row.average_buy_price ?? row.avg_cost ?? row.average_price);
     const mkt = Number(row.market_value ?? row.equity ?? row.value);
+    const last = Number(
+      row.last_trade_price
+        ?? row.mark_price
+        ?? row.adjusted_mark_price
+        ?? row.price
+        ?? row.last_price
+        ?? instrument?.last_trade_price
+        ?? stock?.last_trade_price
+    );
+    const lastPrice = Number.isFinite(last)
+      ? last
+      : Number.isFinite(mkt) && qty
+        ? mkt / Math.abs(qty)
+        : null;
     positions.push({
       symbol: sym,
       quantity: qty,
       side: qty < 0 ? "short" : "long",
       avgCost: Number.isFinite(avg) ? avg : null,
       marketValue: Number.isFinite(mkt) ? mkt : null,
+      lastPrice,
     });
   }
   positions.sort(

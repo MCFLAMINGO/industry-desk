@@ -27,6 +27,9 @@ import {
   type RhStatus,
 } from "@/lib/robinhood";
 import PlayByPlayRail from "@/components/PlayByPlayRail";
+import LivePositionsRail, {
+  LIVE_POSITIONS_POLL_MS,
+} from "@/components/LivePositionsRail";
 
 type SodStep = { title: string; detail: string; ready: boolean };
 
@@ -124,7 +127,9 @@ export default function DeskBoard() {
   const [rh, setRh] = useState<RhStatus | null>(null);
   const [livePositions, setLivePositions] = useState<RhLivePosition[]>([]);
   const [positionsLoading, setPositionsLoading] = useState(true);
+  const [positionsRefreshing, setPositionsRefreshing] = useState(false);
   const [positionsError, setPositionsError] = useState<string | null>(null);
+  const [positionsTickAt, setPositionsTickAt] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [arming, setArming] = useState<string | null>(null);
   const [notional, setNotional] = useState(25);
@@ -134,6 +139,7 @@ export default function DeskBoard() {
 
   const loadPositions = useCallback(async (opts?: { quiet?: boolean }) => {
     if (!opts?.quiet) setPositionsLoading(true);
+    setPositionsRefreshing(true);
     try {
       const data = await fetchLivePositions();
       if (!data.ok) {
@@ -143,6 +149,7 @@ export default function DeskBoard() {
       }
       setLivePositions(data.positions);
       setPositionsError(null);
+      setPositionsTickAt(Date.now());
       return data;
     } catch (e) {
       setPositionsError((e as Error).message);
@@ -150,6 +157,7 @@ export default function DeskBoard() {
       return null;
     } finally {
       setPositionsLoading(false);
+      setPositionsRefreshing(false);
     }
   }, []);
 
@@ -198,7 +206,10 @@ export default function DeskBoard() {
   }, [load]);
 
   useEffect(() => {
-    const iv = window.setInterval(() => loadPositions({ quiet: true }), 15_000);
+    const iv = window.setInterval(
+      () => loadPositions({ quiet: true }),
+      LIVE_POSITIONS_POLL_MS
+    );
     return () => window.clearInterval(iv);
   }, [loadPositions]);
 
@@ -302,6 +313,7 @@ export default function DeskBoard() {
         side: p.side || "long",
         avgCost: p.avgCost ?? null,
         marketValue: p.marketValue ?? null,
+        lastPrice: null,
       });
     }
     for (const p of fromLive) merged.set(p.symbol, p);
@@ -309,6 +321,14 @@ export default function DeskBoard() {
       (a, b) => Math.abs(b.marketValue || 0) - Math.abs(a.marketValue || 0)
     );
   }, [livePositions, desk]);
+
+  const markBySymbol = useMemo(() => {
+    const out: Record<string, number | null | undefined> = {};
+    for (const r of desk?.state?.rankings || []) {
+      out[r.symbol.toUpperCase()] = r.price;
+    }
+    return out;
+  }, [desk]);
 
   const sodSteps = useMemo(
     () =>
@@ -399,99 +419,27 @@ export default function DeskBoard() {
         ) : null}
       </div>
 
-      <section className="mb-8">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--teal)]">
-              Live positions
-            </p>
-            <p className="mt-1 text-sm text-[var(--ink-soft)]">
-              Agentic holdings first — app fills show here. Dry-run play-by-play below is paper only.
-            </p>
-          </div>
-          <button
-            type="button"
-            disabled={positionsLoading || busy}
-            onClick={async () => {
-              const data = await loadPositions();
-              if (data && "ok" in data && data.ok) {
-                toast.success("Positions updated", {
-                  description: `${data.positions.length} holding${data.positions.length === 1 ? "" : "s"} · ${new Date().toLocaleTimeString()}`,
-                });
-              } else {
-                toast.error("Positions refresh failed", {
-                  description: (data && "error" in data && data.error) || positionsError || "Unknown",
-                });
-              }
-            }}
-            className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-white/70 px-3 py-1.5 text-sm font-medium text-[var(--teal-deep)] hover:border-[var(--teal)] disabled:opacity-50"
-          >
-            <RefreshCw className={clsx("h-3.5 w-3.5", positionsLoading && "animate-spin")} />
-            {positionsLoading ? "Loading…" : "Refresh positions"}
-          </button>
-        </div>
-        {positionsError ? (
-          <p className="mb-3 text-sm text-[var(--danger)]">Positions — {positionsError}</p>
-        ) : null}
-        {positionsLoading && heldPositions.length === 0 ? (
-          <div className="glass rounded-3xl p-5 text-sm text-[var(--ink-soft)]">
-            Loading Agentic positions…
-          </div>
-        ) : heldPositions.length === 0 ? (
-          <div className="glass rounded-3xl border border-dashed border-[var(--line)] p-5 text-sm text-[var(--ink-soft)]">
-            No live Agentic equity positions right now. Place in Robinhood or Approve live, then
-            Refresh positions.
-          </div>
-        ) : (
-          <div className="grid gap-3">
-            {heldPositions.map((p) => {
-              const markFromRank = rankings.find(
-                (r) => r.symbol.toUpperCase() === p.symbol
-              )?.price;
-              const mark = markFromRank ?? null;
-              const pnlPct =
-                mark != null && p.avgCost != null && p.avgCost !== 0
-                  ? ((mark - p.avgCost) / p.avgCost) * 100
-                  : null;
-              const pnlUsd =
-                mark != null && p.avgCost != null
-                  ? (mark - p.avgCost) * p.quantity
-                  : null;
-              return (
-                <article
-                  key={p.symbol}
-                  className="glass rounded-3xl border border-emerald-300/70 bg-emerald-50/40 p-4 sm:p-5"
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="display text-2xl font-semibold">{p.symbol}</h2>
-                    <span className="rounded-full bg-emerald-600 px-2.5 py-0.5 text-xs font-semibold text-white">
-                      LIVE · RH held
-                    </span>
-                    <span className="rounded-full border border-[var(--line)] px-2 py-0.5 text-xs uppercase">
-                      {p.side}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-sm text-[var(--ink)]">
-                    {p.quantity} sh
-                    {p.avgCost != null ? ` · avg ${fmtUsd(p.avgCost)}` : ""}
-                    {mark != null ? ` · mark ${fmtUsd(mark)}` : ""}
-                    {p.marketValue != null ? ` · ${fmtUsd(p.marketValue)}` : ""}
-                    {pnlPct != null
-                      ? ` · P&L ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(2)}%`
-                      : ""}
-                    {pnlUsd != null
-                      ? ` (${pnlUsd >= 0 ? "+" : ""}${fmtUsd(pnlUsd)})`
-                      : ""}
-                  </p>
-                  <p className="mt-1 text-xs text-emerald-900">
-                    Real Agentic position — not the dry-run card in play-by-play.
-                  </p>
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
+      <LivePositionsRail
+        positions={heldPositions}
+        markBySymbol={markBySymbol}
+        loading={positionsLoading || positionsRefreshing}
+        error={positionsError}
+        lastTickAt={positionsTickAt}
+        disabled={busy}
+        onRefresh={async () => {
+          const data = await loadPositions();
+          if (data && "ok" in data && data.ok) {
+            toast.success("Positions updated", {
+              description: `${data.positions.length} holding${data.positions.length === 1 ? "" : "s"} · ${new Date().toLocaleTimeString()}`,
+            });
+          } else {
+            toast.error("Positions refresh failed", {
+              description:
+                (data && "error" in data && data.error) || positionsError || "Unknown",
+            });
+          }
+        }}
+      />
 
       <section className="glass mb-8 rounded-3xl p-5 sm:p-6">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--teal)]">
