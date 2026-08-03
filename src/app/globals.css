@@ -128,3 +128,89 @@ a {
   font-variant-numeric: tabular-nums;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
+.live-dot {
+  position: relative;
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: #059669;
+  box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.55);
+  animation: live-pulse 1.6s ease-out infinite;
+}
+
+.live-dot--on-dark {
+  background: #ecfdf5;
+  box-shadow: 0 0 0 0 rgba(236, 253, 245, 0.55);
+  animation-name: live-pulse-on-dark;
+}
+
+.live-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(5, 150, 105, 0.35);
+  background: rgba(236, 253, 245, 0.85);
+  color: #065f46;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.tick-meter {
+  position: relative;
+  display: inline-block;
+  width: 4.5rem;
+  height: 0.35rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(15, 76, 86, 0.12);
+}
+
+.tick-meter__fill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transform-origin: left center;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #0f766e, #34d399);
+}
+
+.tick-sweep {
+  pointer-events: none;
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 35%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(16, 185, 129, 0.28),
+    transparent
+  );
+}
+
+@keyframes live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 0.55rem rgba(5, 150, 105, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(5, 150, 105, 0);
+  }
+}
+
+@keyframes live-pulse-on-dark {
+  0% {
+    box-shadow: 0 0 0 0 rgba(236, 253, 245, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 0.45rem rgba(236, 253, 245, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(236, 253, 245, 0);
+  }
+}
