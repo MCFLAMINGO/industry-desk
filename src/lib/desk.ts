@@ -39,6 +39,35 @@ export type DeskSynthesisMicro = {
   verdict?: string | null;
   conviction?: number | null;
   microReasons?: string[];
+  /** Public FINRA ATS / RegSHO / SEC Form 4 — not dark-web */
+  alt?: {
+    available?: boolean;
+    sourceCount?: number;
+    reasons?: string[];
+    ats?: {
+      available?: boolean;
+      signal?: string;
+      vs4wAvg?: number | null;
+      weekStartDate?: string;
+      shares?: number;
+    } | null;
+    regsho?: {
+      available?: boolean;
+      signal?: string;
+      shortRatio?: number | null;
+      date?: string;
+    } | null;
+    insider?: {
+      available?: boolean;
+      signal?: string;
+      count45d?: number;
+      buys?: number;
+      sells?: number;
+    } | null;
+    compliance?: string;
+  } | null;
+  altFlags?: string[];
+  altReasons?: string[];
   narrative?: string | null;
   newsSentiment?: string | null;
   scoreDelta?: number | null;

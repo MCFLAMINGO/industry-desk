@@ -533,6 +533,24 @@ export default function DeskBoard() {
                       Kill if: {r.synthesis.invalidate.join(" · ")}
                     </p>
                   ) : null}
+                  {r.synthesis?.alt?.available ? (
+                    <p className="mt-2 text-xs leading-relaxed text-[var(--ink)]">
+                      Alt (public):{" "}
+                      {[
+                        r.synthesis.alt.ats?.available
+                          ? `ATS ${r.synthesis.alt.ats.signal}${r.synthesis.alt.ats.vs4wAvg != null ? ` ${r.synthesis.alt.ats.vs4wAvg}×` : ""}`
+                          : null,
+                        r.synthesis.alt.regsho?.available
+                          ? `RegSHO ${r.synthesis.alt.regsho.signal}${r.synthesis.alt.regsho.shortRatio != null ? ` ${(r.synthesis.alt.regsho.shortRatio * 100).toFixed(0)}%` : ""}`
+                          : null,
+                        r.synthesis.alt.insider?.available
+                          ? `Form4 ${r.synthesis.alt.insider.signal} (${r.synthesis.alt.insider.count45d})`
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  ) : null}
                   {r.reasons?.length ? (
                     <p className="mt-2 text-xs text-[var(--ink-soft)]">{r.reasons.join(" · ")}</p>
                   ) : null}
