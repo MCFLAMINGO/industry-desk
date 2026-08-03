@@ -33,6 +33,8 @@ export type DeskPlan = {
   filled_notional?: number | null;
   open_filled?: boolean;
   open_submitted?: boolean;
+  open_when?: string | null;
+  earliest_open_at?: number | null;
   order_state?: string | null;
   order_id?: string | null;
   filled_qty?: number | null;
@@ -256,7 +258,12 @@ export async function armDeskPlay(input: {
         notionalHint: notionalUsd,
         agentExpectedReturn: rank.agentExpectedReturn,
         levels: {},
-        schedule: { due_label: rank.due, horizon: rank.horizon },
+        schedule: {
+          due_label: rank.due,
+          horizon: rank.horizon,
+          // Backend defers live opens to next RTH when armed off-hours / Sunday
+          open_when: "next_rth_if_closed",
+        },
         execution_plan: {
           steps: [
             {

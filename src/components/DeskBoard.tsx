@@ -60,8 +60,8 @@ function buildSodSteps(input: {
     {
       title: "Preview or Approve live",
       detail: et?.isRth
-        ? "RTH open — Preview = dry-run, Approve live places on Agentic."
-        : "Outside RTH — live market orders queue and often never fill (GFD). Prefer Preview until the open.",
+        ? "RTH open — Preview = dry-run, Approve live places on Agentic now."
+        : "Off-hours OK — Approve live arms now and places at the next Mon–Fri 9:30 ET open (think Sunday, fill Monday).",
       ready: Boolean(top) && !top?.inBook,
     },
     {
@@ -185,8 +185,14 @@ export default function DeskBoard() {
       });
       return;
     }
-    if (live && !confirm(`Approve LIVE ${rank.side} ${rank.symbol} for ~$${notional}?`)) {
-      return;
+    if (live) {
+      const offHours = desk?.et && !desk.et.isRth;
+      const ok = confirm(
+        offHours
+          ? `Approve LIVE ${rank.side} ${rank.symbol} for ~$${notional}?\n\nSession is closed — this arms now and places at the next Mon–Fri 9:30 ET open (Sunday think → Monday fill).`
+          : `Approve LIVE ${rank.side} ${rank.symbol} for ~$${notional}?`
+      );
+      if (!ok) return;
     }
     setArming(`${rank.id}:${live ? "live" : "dry"}`);
     try {
@@ -327,8 +333,9 @@ export default function DeskBoard() {
         ) : null}
         {!desk?.et?.isRth ? (
           <p className="mt-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-            Outside regular hours — Agentic market orders often stay <span className="font-semibold">queued</span> and
-            never become a position. Portfolio still shows $0 equity / pending deposit until something actually fills.
+            Session closed — you can still <span className="font-semibold">Approve live</span> when you have time
+            (Sunday night included). The worker holds the plan and places at the next regular open (Mon–Fri 9:30 ET),
+            instead of firing a weekend GFD that dies queued.
           </p>
         ) : null}
       </section>
@@ -339,8 +346,9 @@ export default function DeskBoard() {
             Ranked plays
           </p>
           <p className="mt-1 text-sm text-[var(--ink-soft)]">
-            Preview arms dry-run. Approve live needs confirm +{" "}
-            <span className="mono">ROBINHOOD_LIVE_TRADING</span>.
+            Preview = dry-run. Approve live needs confirm +{" "}
+            <span className="mono">ROBINHOOD_LIVE_TRADING</span>
+            {desk?.et?.isRth ? "." : " · off-hours approve waits for next open."}
           </p>
         </div>
         <label className="flex items-center gap-2 text-sm text-[var(--ink-soft)]">
