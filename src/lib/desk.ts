@@ -265,6 +265,30 @@ export type DeskDayState = {
     phase?: string;
     rankings?: DeskRank[];
     synthesis?: DeskSynthesis | null;
+    /** Live Agentic equity holdings — includes manual/app fills */
+    rhActivity?: {
+      at?: string;
+      buyingPower?: number | null;
+      note?: string;
+      positions?: Array<{
+        symbol: string;
+        quantity?: number;
+        side?: string;
+        avgCost?: number | null;
+        marketValue?: number | null;
+        mark?: number | null;
+        changePct?: number | null;
+        pnlPct?: number | null;
+        pnlUsd?: number | null;
+        sourceNote?: string;
+        deskPlans?: Array<{
+          id?: string;
+          live?: boolean;
+          status?: string;
+          dry_run?: boolean;
+        }>;
+      }>;
+    } | null;
     morningPlan?: {
       headline?: string;
       narrative?: string;

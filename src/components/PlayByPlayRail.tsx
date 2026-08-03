@@ -321,7 +321,8 @@ export default function PlayByPlayRail({
             Play-by-play
           </p>
           <p className="mt-1 text-sm text-[var(--ink-soft)]">
-            Real-time dry-run and live tracking — mark vs stop/target, phase, and worker ticks.
+            Desk-armed plans only. Dry-run is paper — your real Robinhood fills live in{" "}
+            <span className="font-medium text-[var(--ink)]">Your Robinhood book</span> above.
           </p>
         </div>
         <button

@@ -409,14 +409,84 @@ export default function DeskBoard() {
         ) : null}
       </section>
 
+      {(() => {
+        const allPos = desk?.state?.rhActivity?.positions || [];
+        const bookSet = new Set(bookSymbols.map((s) => s.toUpperCase()));
+        const positions =
+          !book || book === "all"
+            ? allPos
+            : allPos.filter((p) => bookSet.has(String(p.symbol || "").toUpperCase()));
+        if (!desk?.state?.rhActivity && !allPos.length) return null;
+        return (
+          <section className="mb-8">
+            <div className="mb-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--teal)]">
+                Your Robinhood book
+              </p>
+              <p className="mt-1 text-sm text-[var(--ink-soft)]">
+                {desk?.state?.rhActivity?.note
+                  || "Live Agentic holdings — app/manual fills show here even when play-by-play is dry-run."}
+              </p>
+            </div>
+            {positions.length === 0 ? (
+              <div className="glass rounded-3xl p-5 text-sm text-[var(--ink-soft)]">
+                No Agentic equity positions
+                {book && book !== "all" ? ` in ${meta.name}` : ""} right now.
+                {allPos.length
+                  ? " (You have holdings in other books — try All.)"
+                  : " Trades you place in the Robinhood app land here after Refresh."}
+              </div>
+            ) : (
+              <div className="grid gap-3">
+                {positions.map((p) => (
+                  <article
+                    key={p.symbol}
+                    className="glass rounded-3xl border border-emerald-200/60 p-4 sm:p-5"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="display text-2xl font-semibold">{p.symbol}</h2>
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-900">
+                            RH held
+                          </span>
+                          <span className="rounded-full border border-[var(--line)] px-2 py-0.5 text-xs uppercase">
+                            {p.side || "long"}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm text-[var(--ink-soft)]">
+                          {p.quantity != null ? `${p.quantity} sh` : null}
+                          {p.avgCost != null ? ` · avg ${fmtUsd(p.avgCost)}` : null}
+                          {p.mark != null ? ` · mark ${fmtUsd(p.mark)}` : null}
+                          {p.marketValue != null ? ` · ${fmtUsd(p.marketValue)}` : null}
+                          {p.pnlPct != null
+                            ? ` · P&L ${p.pnlPct > 0 ? "+" : ""}${p.pnlPct.toFixed(2)}%`
+                            : null}
+                          {p.pnlUsd != null
+                            ? ` (${p.pnlUsd >= 0 ? "+" : ""}${fmtUsd(p.pnlUsd)})`
+                            : null}
+                        </p>
+                        {p.sourceNote ? (
+                          <p className="mt-2 text-xs font-medium text-emerald-900">{p.sourceNote}</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        );
+      })()}
+
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--teal)]">
             Ranked plays
           </p>
           <p className="mt-1 text-sm text-[var(--ink-soft)]">
-            Each play is a decision card: edge/Kelly, agree/disagree, thesis + kill criteria — not a news badge.
-            Preview = dry-run. Approve live needs{" "}
+            Proposed next moves (not your fills). Dry-run ≠ Robinhood fill — holdings are in Your Robinhood book above.
+            Approve live needs{" "}
             <span className="mono">ROBINHOOD_LIVE_TRADING</span>
             {desk?.et?.isRth ? "." : " · off-hours approve waits for next open."}
           </p>
@@ -437,7 +507,8 @@ export default function DeskBoard() {
       <div className="mb-10 grid gap-3">
         {rankings.length === 0 ? (
           <div className="glass rounded-3xl p-5 text-sm text-[var(--ink-soft)]">
-            No rankings yet for this book. Hit Refresh after Robinhood quotes land, or try All.
+            No rankings for this book in the last desk pass. Hit <span className="font-semibold">Refresh desk</span>
+            {" "}— we now keep per-book ranks (not only the global top 16).
           </div>
         ) : (
           rankings.map((r, i) => (
