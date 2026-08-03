@@ -114,6 +114,8 @@ export default function DeskBoard() {
   const [arming, setArming] = useState<string | null>(null);
   const [notional, setNotional] = useState(25);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [deskUpdatedAt, setDeskUpdatedAt] = useState<string | null>(null);
+  const [playRefreshToken, setPlayRefreshToken] = useState(0);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -125,8 +127,13 @@ export default function DeskBoard() {
       fetchRhStatus(),
     ]);
 
-    if (d.status === "fulfilled") setDesk(d.value);
-    else errors.push(`Desk day: ${d.reason?.message || d.reason}`);
+    let nextDesk: DeskDayState | null = null;
+    if (d.status === "fulfilled") {
+      nextDesk = d.value;
+      setDesk(d.value);
+    } else {
+      errors.push(`Desk day: ${d.reason?.message || d.reason}`);
+    }
 
     if (t.status === "fulfilled") setTape(t.value);
     else errors.push(`Tape: ${t.reason?.message || t.reason}`);
@@ -143,6 +150,9 @@ export default function DeskBoard() {
     if (s.status === "fulfilled") setRh(s.value);
 
     if (errors.length) setLoadError(errors.join(" · "));
+    const at = new Date().toISOString();
+    setDeskUpdatedAt(at);
+    return { desk: nextDesk, at };
   }, [book]);
 
   useEffect(() => {
@@ -169,8 +179,23 @@ export default function DeskBoard() {
     setBusy(true);
     try {
       await runDeskPass(false);
-      await load();
-      toast.success("Desk refreshed");
+      const { desk: next, at } = await load();
+      setPlayRefreshToken((n) => n + 1);
+      const rows = next?.state?.rankings || [];
+      const forBook =
+        !book || book === "all" ? rows : rows.filter((r) => r.industryId === book);
+      const session = next?.et?.isRth ? "RTH open" : "session closed";
+      const lead = forBook[0]?.symbol;
+      toast.success("Desk refreshed", {
+        description: [
+          `${forBook.length} ranked play${forBook.length === 1 ? "" : "s"}`,
+          lead ? `lead ${lead}` : null,
+          session,
+          new Date(at).toLocaleTimeString(),
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      });
     } catch (e) {
       toast.error("Refresh failed", { description: (e as Error).message });
     } finally {
@@ -202,6 +227,7 @@ export default function DeskBoard() {
         description: String(out.message || `${rank.symbol} on the worker`),
       });
       await load();
+      setPlayRefreshToken((n) => n + 1);
     } catch (e) {
       toast.error(live ? "Approve failed" : "Preview failed", {
         description: (e as Error).message,
@@ -285,12 +311,12 @@ export default function DeskBoard() {
         })}
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || Boolean(arming)}
           onClick={onRefresh}
           className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-white/60 px-3.5 py-1.5 text-sm font-medium text-[var(--ink-soft)] hover:text-[var(--teal-deep)] disabled:opacity-50"
         >
           <RefreshCw className={clsx("h-3.5 w-3.5", busy && "animate-spin")} />
-          Refresh
+          {busy ? "Refreshing…" : "Refresh desk"}
         </button>
         <Link
           href="/connect"
@@ -298,6 +324,11 @@ export default function DeskBoard() {
         >
           Robinhood
         </Link>
+        {deskUpdatedAt ? (
+          <span className="text-xs text-[var(--ink-soft)]">
+            Updated {new Date(deskUpdatedAt).toLocaleTimeString()}
+          </span>
+        ) : null}
       </div>
 
       <section className="glass mb-8 rounded-3xl p-5 sm:p-6">
@@ -439,7 +470,11 @@ export default function DeskBoard() {
         <p className="mb-4 text-sm text-[var(--danger)]">{loadError}</p>
       ) : null}
 
-      <PlayByPlayRail bookFilter={book} symbols={bookSymbols} />
+      <PlayByPlayRail
+        bookFilter={book}
+        symbols={bookSymbols}
+        refreshToken={playRefreshToken}
+      />
     </main>
   );
 }
