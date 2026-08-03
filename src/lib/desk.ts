@@ -2,12 +2,47 @@
 
 export type DeskSynthesisMicro = {
   globalFit?: string | null;
+  /** APPROVE | PREVIEW | CONFLICT | PASS | WATCH */
+  recommend?: string | null;
+  stance?: string | null;
+  stanceLabel?: string | null;
+  thesis?: string | null;
+  invalidate?: string[];
+  edge?: {
+    hasEdge?: boolean;
+    p?: number;
+    b?: number;
+    expectancy?: number;
+    targetPct?: number;
+    stopPct?: number;
+  } | null;
+  size?: {
+    notional_usd?: number;
+    blocked?: string | null;
+    message?: string | null;
+  } | null;
+  vsBook?: {
+    rankInBook?: number;
+    peerCount?: number;
+    vsPeerAvg?: number | null;
+    note?: string;
+  } | null;
+  concentration?: {
+    risk?: string;
+    note?: string;
+  } | null;
+  quality?: {
+    count?: number;
+    reliable?: boolean;
+    note?: string;
+  } | null;
   verdict?: string | null;
   conviction?: number | null;
   microReasons?: string[];
   narrative?: string | null;
   newsSentiment?: string | null;
   scoreDelta?: number | null;
+  advantage?: string | null;
   fundamentals?: {
     sector?: string | null;
     industry?: string | null;
@@ -17,23 +52,33 @@ export type DeskSynthesisMicro = {
   technicals?: {
     trend?: string | null;
     last?: number | null;
-    rsi?: number | null;
+    change_1d_pct?: number | null;
   } | null;
 };
 
 export type DeskSynthesis = {
   enabled?: boolean;
+  version?: number;
   at?: string;
   duration_ms?: number;
   narrative?: string;
   top?: string[];
   microCount?: number;
   microAttempted?: number;
+  thinCount?: number;
+  approveCount?: number;
+  previewCount?: number;
+  conflictCount?: number;
   global?: {
     available?: boolean;
     regime?: string;
     narrative?: string;
     reasons?: string[];
+    action?: {
+      favor?: string[];
+      fade?: string[];
+      note?: string;
+    };
     industryLead?: {
       id?: string;
       label?: string;

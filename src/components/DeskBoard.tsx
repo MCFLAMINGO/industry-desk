@@ -55,9 +55,10 @@ function buildSodSteps(input: {
     },
     {
       title: "Synthesize",
-      detail: syn?.narrative
+      detail: syn?.global?.action?.note
+        || syn?.narrative
         || syn?.global?.narrative
-        || "Global macro + micro Elite intel fold into the top ranks on Refresh.",
+        || "Refresh builds edge/Kelly + agree/disagree decision cards (not news wallpaper).",
       ready: synReady,
     },
     {
@@ -371,17 +372,32 @@ export default function DeskBoard() {
         {(desk?.state?.synthesis || desk?.state?.morningPlan?.synthesis) ? (
           <div className="mt-4 rounded-2xl border border-[var(--line)] bg-white/50 px-3 py-3">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--teal)]">
-              Global ↔ micro
+              Fiduciary synthesis
             </p>
             <p className="mt-1.5 text-sm leading-relaxed text-[var(--ink)]">
-              {(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.global?.narrative
+              {(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.global?.action?.note
+                || (desk.state.synthesis || desk.state.morningPlan?.synthesis)?.global?.narrative
                 || (desk.state.synthesis || desk.state.morningPlan?.synthesis)?.narrative}
             </p>
-            {(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.top?.length ? (
-              <p className="mt-1 text-xs text-[var(--ink-soft)]">
-                Top micro: {(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.top?.join(" · ")}
-              </p>
-            ) : null}
+            <p className="mt-1 text-xs text-[var(--ink-soft)]">
+              {[
+                (desk.state.synthesis || desk.state.morningPlan?.synthesis)?.approveCount != null
+                  ? `${(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.approveCount} approve`
+                  : null,
+                (desk.state.synthesis || desk.state.morningPlan?.synthesis)?.previewCount != null
+                  ? `${(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.previewCount} preview`
+                  : null,
+                (desk.state.synthesis || desk.state.morningPlan?.synthesis)?.conflictCount != null
+                  ? `${(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.conflictCount} conflict`
+                  : null,
+                (desk.state.synthesis || desk.state.morningPlan?.synthesis)?.microCount != null
+                  ? `${(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.microCount} reliable micro`
+                  : null,
+                (desk.state.synthesis || desk.state.morningPlan?.synthesis)?.top?.join(" · "),
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
           </div>
         ) : null}
         {!desk?.et?.isRth ? (
@@ -399,7 +415,8 @@ export default function DeskBoard() {
             Ranked plays
           </p>
           <p className="mt-1 text-sm text-[var(--ink-soft)]">
-            Scores fuse Robinhood tape with Elite global/micro. Preview = dry-run. Approve live needs{" "}
+            Each play is a decision card: edge/Kelly, agree/disagree, thesis + kill criteria — not a news badge.
+            Preview = dry-run. Approve live needs{" "}
             <span className="mono">ROBINHOOD_LIVE_TRADING</span>
             {desk?.et?.isRth ? "." : " · off-hours approve waits for next open."}
           </p>
@@ -454,17 +471,28 @@ export default function DeskBoard() {
                         Dry preview
                       </span>
                     ) : null}
-                    {r.synthesis?.verdict ? (
+                    {r.synthesis?.recommend ? (
                       <span
                         className={clsx(
                           "rounded-full px-2 py-0.5 text-xs font-semibold",
-                          r.synthesis.verdict === "BUY" && "bg-emerald-100 text-emerald-900",
-                          r.synthesis.verdict === "AVOID" && "bg-rose-100 text-rose-900",
-                          r.synthesis.verdict === "HOLD" && "bg-slate-100 text-slate-800"
+                          r.synthesis.recommend === "APPROVE" && "bg-emerald-100 text-emerald-900",
+                          r.synthesis.recommend === "PREVIEW" && "bg-sky-100 text-sky-900",
+                          r.synthesis.recommend === "CONFLICT" && "bg-amber-100 text-amber-950",
+                          r.synthesis.recommend === "PASS" && "bg-rose-100 text-rose-900",
+                          r.synthesis.recommend === "WATCH" && "bg-slate-100 text-slate-800"
                         )}
                       >
-                        Elite {r.synthesis.verdict}
+                        {r.synthesis.recommend}
+                      </span>
+                    ) : null}
+                    {r.synthesis?.verdict ? (
+                      <span className="rounded-full border border-[var(--line)] px-2 py-0.5 text-xs">
+                        Micro {r.synthesis.verdict}
                         {r.synthesis.conviction != null ? ` · ${r.synthesis.conviction}` : ""}
+                      </span>
+                    ) : r.synthesis?.quality && !r.synthesis.quality.reliable ? (
+                      <span className="rounded-full border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--ink-soft)]">
+                        Thin micro
                       </span>
                     ) : null}
                   </div>
@@ -472,17 +500,41 @@ export default function DeskBoard() {
                     {r.industryLabel} · score {r.score}
                     {r.price != null ? ` · ${fmtUsd(r.price)}` : ""}
                     {r.changePct != null ? ` · ${fmtPct(r.changePct)}` : ""}
+                    {r.synthesis?.vsBook?.note ? ` · ${r.synthesis.vsBook.note}` : ""}
                   </p>
-                  {r.reasons?.length ? (
-                    <p className="mt-2 text-xs text-[var(--ink-soft)]">{r.reasons.join(" · ")}</p>
-                  ) : null}
-                  {r.synthesis?.narrative ? (
-                    <p className="mt-2 text-xs leading-relaxed text-[var(--teal-deep)]">
-                      {r.synthesis.narrative}
-                      {r.synthesis.microReasons?.length
-                        ? ` — ${r.synthesis.microReasons.slice(0, 2).join("; ")}`
+                  {r.synthesis?.edge ? (
+                    <p className="mt-2 mono text-xs text-[var(--ink)]">
+                      {r.synthesis.edge.hasEdge ? "Edge" : "No edge"}
+                      {` · p=${r.synthesis.edge.p} b=${r.synthesis.edge.b} E=${r.synthesis.edge.expectancy}`}
+                      {r.synthesis.size
+                        ? r.synthesis.size.blocked
+                          ? ` · size ${r.synthesis.size.blocked}`
+                          : ` · ~$${r.synthesis.size.notional_usd} ¼Kelly`
                         : ""}
                     </p>
+                  ) : null}
+                  {r.synthesis?.thesis ? (
+                    <p className="mt-2 text-xs leading-relaxed text-[var(--ink)]">{r.synthesis.thesis}</p>
+                  ) : null}
+                  {r.synthesis?.stanceLabel ? (
+                    <p
+                      className={clsx(
+                        "mt-1 text-xs font-medium",
+                        r.synthesis.stance === "disagree" || r.synthesis.recommend === "CONFLICT"
+                          ? "text-amber-800"
+                          : "text-[var(--teal-deep)]"
+                      )}
+                    >
+                      {r.synthesis.stanceLabel}
+                    </p>
+                  ) : null}
+                  {r.synthesis?.invalidate?.length ? (
+                    <p className="mt-1 text-xs text-[var(--ink-soft)]">
+                      Kill if: {r.synthesis.invalidate.join(" · ")}
+                    </p>
+                  ) : null}
+                  {r.reasons?.length ? (
+                    <p className="mt-2 text-xs text-[var(--ink-soft)]">{r.reasons.join(" · ")}</p>
                   ) : null}
                 </div>
                 <div className="flex flex-wrap gap-2">
