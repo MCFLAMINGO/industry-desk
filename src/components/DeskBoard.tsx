@@ -20,7 +20,12 @@ import {
   type DeskRank,
   type IndustryTape,
 } from "@/lib/desk";
-import { fetchRhStatus, type RhStatus } from "@/lib/robinhood";
+import {
+  fetchLivePositions,
+  fetchRhStatus,
+  type RhLivePosition,
+  type RhStatus,
+} from "@/lib/robinhood";
 import PlayByPlayRail from "@/components/PlayByPlayRail";
 
 type SodStep = { title: string; detail: string; ready: boolean };
@@ -55,9 +60,10 @@ function buildSodSteps(input: {
     },
     {
       title: "Synthesize",
-      detail: syn?.narrative
+      detail: syn?.global?.action?.note
+        || syn?.narrative
         || syn?.global?.narrative
-        || "Global macro + micro Elite intel fold into the top ranks on Refresh.",
+        || "Refresh builds edge/Kelly + agree/disagree decision cards (not news wallpaper).",
       ready: synReady,
     },
     {
@@ -78,12 +84,12 @@ function buildSodSteps(input: {
       ready: Boolean(top) && !top?.inBook,
     },
     {
-      title: "Watch Open book",
+      title: "Watch positions",
       detail: held.length
-        ? `Robinhood holds in books: ${held.join(", ")}. Play-by-play tracks marks below.`
+        ? `Live RH holds: ${held.join(", ")} — pinned at the top of this page.`
         : bookSymbols.length
-          ? `No Robinhood holdings in ${book === "all" ? "industry books" : book} right now — submitted ≠ filled.`
-          : "Open book loads below.",
+          ? `No RH holdings in ${book === "all" ? "industry books" : book} — Live positions rail is above Start of day.`
+          : "Live positions rail is above Start of day.",
       ready: true,
     },
   ];
@@ -116,12 +122,36 @@ export default function DeskBoard() {
   const [desk, setDesk] = useState<DeskDayState | null>(null);
   const [tape, setTape] = useState<IndustryTape | null>(null);
   const [rh, setRh] = useState<RhStatus | null>(null);
+  const [livePositions, setLivePositions] = useState<RhLivePosition[]>([]);
+  const [positionsLoading, setPositionsLoading] = useState(true);
+  const [positionsError, setPositionsError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [arming, setArming] = useState<string | null>(null);
   const [notional, setNotional] = useState(25);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [deskUpdatedAt, setDeskUpdatedAt] = useState<string | null>(null);
   const [playRefreshToken, setPlayRefreshToken] = useState(0);
+
+  const loadPositions = useCallback(async (opts?: { quiet?: boolean }) => {
+    if (!opts?.quiet) setPositionsLoading(true);
+    try {
+      const data = await fetchLivePositions();
+      if (!data.ok) {
+        setPositionsError(data.error || "Could not load positions");
+        setLivePositions([]);
+        return data;
+      }
+      setLivePositions(data.positions);
+      setPositionsError(null);
+      return data;
+    } catch (e) {
+      setPositionsError((e as Error).message);
+      setLivePositions([]);
+      return null;
+    } finally {
+      setPositionsLoading(false);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -132,6 +162,8 @@ export default function DeskBoard() {
       fetchOpenBook(),
       fetchRhStatus(),
     ]);
+    // Positions load in parallel path so the top rail always updates
+    void loadPositions({ quiet: true });
 
     let nextDesk: DeskDayState | null = null;
     if (d.status === "fulfilled") {
@@ -149,7 +181,7 @@ export default function DeskBoard() {
       toast.error("Could not load open book", {
         description: String(p.reason?.message || p.reason),
       });
-    } else if (p.value.error) {
+    } else if (p.status === "fulfilled" && p.value.error) {
       errors.push(`Open book: ${p.value.error}`);
     }
 
@@ -159,11 +191,16 @@ export default function DeskBoard() {
     const at = new Date().toISOString();
     setDeskUpdatedAt(at);
     return { desk: nextDesk, at };
-  }, [book]);
+  }, [book, loadPositions]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const iv = window.setInterval(() => loadPositions({ quiet: true }), 15_000);
+    return () => window.clearInterval(iv);
+  }, [loadPositions]);
 
   const rankings = useMemo(() => {
     const rows = desk?.state?.rankings || [];
@@ -185,17 +222,22 @@ export default function DeskBoard() {
     setBusy(true);
     try {
       await runDeskPass(false);
-      const { desk: next, at } = await load();
+      const [{ desk: next, at }, pos] = await Promise.all([
+        load(),
+        loadPositions({ quiet: true }),
+      ]);
       setPlayRefreshToken((n) => n + 1);
       const rows = next?.state?.rankings || [];
       const forBook =
         !book || book === "all" ? rows : rows.filter((r) => r.industryId === book);
       const session = next?.et?.isRth ? "RTH open" : "session closed";
       const lead = forBook[0]?.symbol;
+      const heldN = pos && "positions" in pos ? pos.positions.length : livePositions.length;
       toast.success("Desk refreshed", {
         description: [
           `${forBook.length} ranked play${forBook.length === 1 ? "" : "s"}`,
           lead ? `lead ${lead}` : null,
+          `${heldN} RH position${heldN === 1 ? "" : "s"}`,
           session,
           new Date(at).toLocaleTimeString(),
         ]
@@ -211,8 +253,8 @@ export default function DeskBoard() {
 
   async function onArm(rank: DeskRank, live: boolean) {
     if (live && rank.inBook) {
-      toast.message("Already open", {
-        description: "Live plan or Robinhood hold blocks Approve live.",
+      toast.message("Approve live blocked", {
+        description: `${rank.symbol} is already held or has a live plan — manage it in Your Robinhood book / play-by-play.`,
       });
       return;
     }
@@ -247,6 +289,26 @@ export default function DeskBoard() {
     if (tapeBook?.names?.length) return tapeBook.names.map((n) => n.symbol);
     return meta.tickers;
   }, [tapeBook, meta.tickers]);
+
+  /** Always show every Agentic holding up top (never hide behind book tabs). */
+  const heldPositions = useMemo(() => {
+    const fromLive = livePositions;
+    const fromDesk = desk?.state?.rhActivity?.positions || [];
+    const merged = new Map<string, RhLivePosition>();
+    for (const p of fromDesk) {
+      merged.set(String(p.symbol).toUpperCase(), {
+        symbol: String(p.symbol).toUpperCase(),
+        quantity: Number(p.quantity || 0),
+        side: p.side || "long",
+        avgCost: p.avgCost ?? null,
+        marketValue: p.marketValue ?? null,
+      });
+    }
+    for (const p of fromLive) merged.set(p.symbol, p);
+    return [...merged.values()].sort(
+      (a, b) => Math.abs(b.marketValue || 0) - Math.abs(a.marketValue || 0)
+    );
+  }, [livePositions, desk]);
 
   const sodSteps = useMemo(
     () =>
@@ -337,6 +399,100 @@ export default function DeskBoard() {
         ) : null}
       </div>
 
+      <section className="mb-8">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--teal)]">
+              Live positions
+            </p>
+            <p className="mt-1 text-sm text-[var(--ink-soft)]">
+              Agentic holdings first — app fills show here. Dry-run play-by-play below is paper only.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={positionsLoading || busy}
+            onClick={async () => {
+              const data = await loadPositions();
+              if (data && "ok" in data && data.ok) {
+                toast.success("Positions updated", {
+                  description: `${data.positions.length} holding${data.positions.length === 1 ? "" : "s"} · ${new Date().toLocaleTimeString()}`,
+                });
+              } else {
+                toast.error("Positions refresh failed", {
+                  description: (data && "error" in data && data.error) || positionsError || "Unknown",
+                });
+              }
+            }}
+            className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-white/70 px-3 py-1.5 text-sm font-medium text-[var(--teal-deep)] hover:border-[var(--teal)] disabled:opacity-50"
+          >
+            <RefreshCw className={clsx("h-3.5 w-3.5", positionsLoading && "animate-spin")} />
+            {positionsLoading ? "Loading…" : "Refresh positions"}
+          </button>
+        </div>
+        {positionsError ? (
+          <p className="mb-3 text-sm text-[var(--danger)]">Positions — {positionsError}</p>
+        ) : null}
+        {positionsLoading && heldPositions.length === 0 ? (
+          <div className="glass rounded-3xl p-5 text-sm text-[var(--ink-soft)]">
+            Loading Agentic positions…
+          </div>
+        ) : heldPositions.length === 0 ? (
+          <div className="glass rounded-3xl border border-dashed border-[var(--line)] p-5 text-sm text-[var(--ink-soft)]">
+            No live Agentic equity positions right now. Place in Robinhood or Approve live, then
+            Refresh positions.
+          </div>
+        ) : (
+          <div className="grid gap-3">
+            {heldPositions.map((p) => {
+              const markFromRank = rankings.find(
+                (r) => r.symbol.toUpperCase() === p.symbol
+              )?.price;
+              const mark = markFromRank ?? null;
+              const pnlPct =
+                mark != null && p.avgCost != null && p.avgCost !== 0
+                  ? ((mark - p.avgCost) / p.avgCost) * 100
+                  : null;
+              const pnlUsd =
+                mark != null && p.avgCost != null
+                  ? (mark - p.avgCost) * p.quantity
+                  : null;
+              return (
+                <article
+                  key={p.symbol}
+                  className="glass rounded-3xl border border-emerald-300/70 bg-emerald-50/40 p-4 sm:p-5"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="display text-2xl font-semibold">{p.symbol}</h2>
+                    <span className="rounded-full bg-emerald-600 px-2.5 py-0.5 text-xs font-semibold text-white">
+                      LIVE · RH held
+                    </span>
+                    <span className="rounded-full border border-[var(--line)] px-2 py-0.5 text-xs uppercase">
+                      {p.side}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-sm text-[var(--ink)]">
+                    {p.quantity} sh
+                    {p.avgCost != null ? ` · avg ${fmtUsd(p.avgCost)}` : ""}
+                    {mark != null ? ` · mark ${fmtUsd(mark)}` : ""}
+                    {p.marketValue != null ? ` · ${fmtUsd(p.marketValue)}` : ""}
+                    {pnlPct != null
+                      ? ` · P&L ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(2)}%`
+                      : ""}
+                    {pnlUsd != null
+                      ? ` (${pnlUsd >= 0 ? "+" : ""}${fmtUsd(pnlUsd)})`
+                      : ""}
+                  </p>
+                  <p className="mt-1 text-xs text-emerald-900">
+                    Real Agentic position — not the dry-run card in play-by-play.
+                  </p>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
       <section className="glass mb-8 rounded-3xl p-5 sm:p-6">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--teal)]">
           Start of day
@@ -371,17 +527,32 @@ export default function DeskBoard() {
         {(desk?.state?.synthesis || desk?.state?.morningPlan?.synthesis) ? (
           <div className="mt-4 rounded-2xl border border-[var(--line)] bg-white/50 px-3 py-3">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--teal)]">
-              Global ↔ micro
+              Fiduciary synthesis
             </p>
             <p className="mt-1.5 text-sm leading-relaxed text-[var(--ink)]">
-              {(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.global?.narrative
+              {(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.global?.action?.note
+                || (desk.state.synthesis || desk.state.morningPlan?.synthesis)?.global?.narrative
                 || (desk.state.synthesis || desk.state.morningPlan?.synthesis)?.narrative}
             </p>
-            {(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.top?.length ? (
-              <p className="mt-1 text-xs text-[var(--ink-soft)]">
-                Top micro: {(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.top?.join(" · ")}
-              </p>
-            ) : null}
+            <p className="mt-1 text-xs text-[var(--ink-soft)]">
+              {[
+                (desk.state.synthesis || desk.state.morningPlan?.synthesis)?.approveCount != null
+                  ? `${(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.approveCount} approve`
+                  : null,
+                (desk.state.synthesis || desk.state.morningPlan?.synthesis)?.previewCount != null
+                  ? `${(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.previewCount} preview`
+                  : null,
+                (desk.state.synthesis || desk.state.morningPlan?.synthesis)?.conflictCount != null
+                  ? `${(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.conflictCount} conflict`
+                  : null,
+                (desk.state.synthesis || desk.state.morningPlan?.synthesis)?.microCount != null
+                  ? `${(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.microCount} reliable micro`
+                  : null,
+                (desk.state.synthesis || desk.state.morningPlan?.synthesis)?.top?.join(" · "),
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
           </div>
         ) : null}
         {!desk?.et?.isRth ? (
@@ -399,9 +570,9 @@ export default function DeskBoard() {
             Ranked plays
           </p>
           <p className="mt-1 text-sm text-[var(--ink-soft)]">
-            Scores fuse Robinhood tape with Elite global/micro. Preview = dry-run. Approve live needs{" "}
-            <span className="mono">ROBINHOOD_LIVE_TRADING</span>
-            {desk?.et?.isRth ? "." : " · off-hours approve waits for next open."}
+            Next moves only — live fills stay in Live positions at the top. Preview always works;
+            Approve live needs confirm + <span className="mono">ROBINHOOD_LIVE_TRADING</span>
+            {desk?.et?.isRth ? "." : " · off-hours waits for next open."}
           </p>
         </div>
         <label className="flex items-center gap-2 text-sm text-[var(--ink-soft)]">
@@ -420,7 +591,8 @@ export default function DeskBoard() {
       <div className="mb-10 grid gap-3">
         {rankings.length === 0 ? (
           <div className="glass rounded-3xl p-5 text-sm text-[var(--ink-soft)]">
-            No rankings yet for this book. Hit Refresh after Robinhood quotes land, or try All.
+            No rankings for this book in the last desk pass. Hit <span className="font-semibold">Refresh desk</span>
+            {" "}— we now keep per-book ranks (not only the global top 16).
           </div>
         ) : (
           rankings.map((r, i) => (
@@ -454,17 +626,28 @@ export default function DeskBoard() {
                         Dry preview
                       </span>
                     ) : null}
-                    {r.synthesis?.verdict ? (
+                    {r.synthesis?.recommend ? (
                       <span
                         className={clsx(
                           "rounded-full px-2 py-0.5 text-xs font-semibold",
-                          r.synthesis.verdict === "BUY" && "bg-emerald-100 text-emerald-900",
-                          r.synthesis.verdict === "AVOID" && "bg-rose-100 text-rose-900",
-                          r.synthesis.verdict === "HOLD" && "bg-slate-100 text-slate-800"
+                          r.synthesis.recommend === "APPROVE" && "bg-emerald-100 text-emerald-900",
+                          r.synthesis.recommend === "PREVIEW" && "bg-sky-100 text-sky-900",
+                          r.synthesis.recommend === "CONFLICT" && "bg-amber-100 text-amber-950",
+                          r.synthesis.recommend === "PASS" && "bg-rose-100 text-rose-900",
+                          r.synthesis.recommend === "WATCH" && "bg-slate-100 text-slate-800"
                         )}
                       >
-                        Elite {r.synthesis.verdict}
+                        {r.synthesis.recommend}
+                      </span>
+                    ) : null}
+                    {r.synthesis?.verdict ? (
+                      <span className="rounded-full border border-[var(--line)] px-2 py-0.5 text-xs">
+                        Micro {r.synthesis.verdict}
                         {r.synthesis.conviction != null ? ` · ${r.synthesis.conviction}` : ""}
+                      </span>
+                    ) : r.synthesis?.quality && !r.synthesis.quality.reliable ? (
+                      <span className="rounded-full border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--ink-soft)]">
+                        Thin micro
                       </span>
                     ) : null}
                   </div>
@@ -472,17 +655,59 @@ export default function DeskBoard() {
                     {r.industryLabel} · score {r.score}
                     {r.price != null ? ` · ${fmtUsd(r.price)}` : ""}
                     {r.changePct != null ? ` · ${fmtPct(r.changePct)}` : ""}
+                    {r.synthesis?.vsBook?.note ? ` · ${r.synthesis.vsBook.note}` : ""}
                   </p>
-                  {r.reasons?.length ? (
-                    <p className="mt-2 text-xs text-[var(--ink-soft)]">{r.reasons.join(" · ")}</p>
-                  ) : null}
-                  {r.synthesis?.narrative ? (
-                    <p className="mt-2 text-xs leading-relaxed text-[var(--teal-deep)]">
-                      {r.synthesis.narrative}
-                      {r.synthesis.microReasons?.length
-                        ? ` — ${r.synthesis.microReasons.slice(0, 2).join("; ")}`
+                  {r.synthesis?.edge ? (
+                    <p className="mt-2 mono text-xs text-[var(--ink)]">
+                      {r.synthesis.edge.hasEdge ? "Edge" : "No edge"}
+                      {` · p=${r.synthesis.edge.p} b=${r.synthesis.edge.b} E=${r.synthesis.edge.expectancy}`}
+                      {r.synthesis.size
+                        ? r.synthesis.size.blocked
+                          ? ` · size ${r.synthesis.size.blocked}`
+                          : ` · ~$${r.synthesis.size.notional_usd} ¼Kelly`
                         : ""}
                     </p>
+                  ) : null}
+                  {r.synthesis?.thesis ? (
+                    <p className="mt-2 text-xs leading-relaxed text-[var(--ink)]">{r.synthesis.thesis}</p>
+                  ) : null}
+                  {r.synthesis?.stanceLabel ? (
+                    <p
+                      className={clsx(
+                        "mt-1 text-xs font-medium",
+                        r.synthesis.stance === "disagree" || r.synthesis.recommend === "CONFLICT"
+                          ? "text-amber-800"
+                          : "text-[var(--teal-deep)]"
+                      )}
+                    >
+                      {r.synthesis.stanceLabel}
+                    </p>
+                  ) : null}
+                  {r.synthesis?.invalidate?.length ? (
+                    <p className="mt-1 text-xs text-[var(--ink-soft)]">
+                      Kill if: {r.synthesis.invalidate.join(" · ")}
+                    </p>
+                  ) : null}
+                  {r.synthesis?.alt?.available ? (
+                    <p className="mt-2 text-xs leading-relaxed text-[var(--ink)]">
+                      Alt (public):{" "}
+                      {[
+                        r.synthesis.alt.ats?.available
+                          ? `ATS ${r.synthesis.alt.ats.signal}${r.synthesis.alt.ats.vs4wAvg != null ? ` ${r.synthesis.alt.ats.vs4wAvg}×` : ""}`
+                          : null,
+                        r.synthesis.alt.regsho?.available
+                          ? `RegSHO ${r.synthesis.alt.regsho.signal}${r.synthesis.alt.regsho.shortRatio != null ? ` ${(r.synthesis.alt.regsho.shortRatio * 100).toFixed(0)}%` : ""}`
+                          : null,
+                        r.synthesis.alt.insider?.available
+                          ? `Form4 ${r.synthesis.alt.insider.signal} (${r.synthesis.alt.insider.count45d})`
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  ) : null}
+                  {r.reasons?.length ? (
+                    <p className="mt-2 text-xs text-[var(--ink-soft)]">{r.reasons.join(" · ")}</p>
                   ) : null}
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -496,11 +721,23 @@ export default function DeskBoard() {
                   </button>
                   <button
                     type="button"
-                    disabled={Boolean(arming) || Boolean(r.inBook)}
+                    disabled={Boolean(arming)}
                     onClick={() => onArm(r, true)}
-                    className="btn btn-primary px-4 py-2 text-sm"
+                    className={clsx(
+                      "btn px-4 py-2 text-sm",
+                      r.inBook ? "btn-ghost opacity-80" : "btn-primary"
+                    )}
+                    title={
+                      r.inBook
+                        ? "Already held / live plan — tap for why Approve is blocked"
+                        : "Arm live plan on Agentic"
+                    }
                   >
-                    {arming === `${r.id}:live` ? "Approving…" : "Approve live"}
+                    {arming === `${r.id}:live`
+                      ? "Approving…"
+                      : r.inBook
+                        ? "Already held"
+                        : "Approve live"}
                   </button>
                 </div>
               </div>
