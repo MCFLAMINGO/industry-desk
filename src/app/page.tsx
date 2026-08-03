@@ -48,7 +48,7 @@ export default function HomePage() {
             transition={{ delay: 0.16 }}
             className="mt-4 max-w-xl text-base leading-relaxed text-[#ccfbf1]"
           >
-            {BRAND.blurb} Start with the AI Trade book. Five more industry sleeves are on deck.
+            {BRAND.blurb} Open a book on the desk — tested in the Swarm lab, shipped here.
           </motion.p>
           <motion.div
             initial={{ opacity: 0, y: 12 }}
@@ -56,8 +56,11 @@ export default function HomePage() {
             transition={{ delay: 0.24 }}
             className="mt-8 flex flex-wrap gap-3"
           >
-            <Link href="/ai" className="btn btn-primary bg-[#042f2e] hover:bg-[#134e4a]">
-              Open AI Desk
+            <Link
+              href="/desk?book=restaurants"
+              className="btn btn-primary bg-[#042f2e] hover:bg-[#134e4a]"
+            >
+              Open Desk
             </Link>
             <Link
               href="/connect"

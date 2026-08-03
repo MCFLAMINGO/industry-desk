@@ -6,9 +6,10 @@ import { BRAND } from "@/lib/industries";
 import clsx from "clsx";
 
 const LINKS = [
-  { href: "/", label: "Industries" },
-  { href: "/ai", label: "AI Desk" },
-  { href: "/connect", label: "Connect" },
+  { href: "/", label: "Industries", match: "/" },
+  { href: "/desk?book=ai", label: "Desk", match: "/desk" },
+  { href: "/ai", label: "AI Desk", match: "/ai" },
+  { href: "/connect", label: "Connect", match: "/connect" },
 ];
 
 export default function SiteNav() {
@@ -23,9 +24,9 @@ export default function SiteNav() {
         <nav className="flex items-center gap-1 sm:gap-2">
           {LINKS.map((link) => {
             const active =
-              link.href === "/"
+              link.match === "/"
                 ? pathname === "/"
-                : pathname === link.href || pathname.startsWith(`${link.href}/`);
+                : pathname === link.match || pathname.startsWith(`${link.match}/`);
             return (
               <Link
                 key={link.href}
