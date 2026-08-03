@@ -31,6 +31,14 @@ export type DeskPlan = {
   dry_run?: boolean;
   strategy?: string;
   filled_notional?: number | null;
+  open_filled?: boolean;
+  last_mark?: number | null;
+  levels?: {
+    entry?: number | null;
+    stop?: number | null;
+    target?: number | null;
+    stretch?: number | null;
+  };
   created_at?: string;
   updated_at?: string;
   steps?: Array<{
@@ -38,6 +46,12 @@ export type DeskPlan = {
     phase?: string;
     title?: string;
     status?: string;
+    detail?: string;
+  }>;
+  events?: Array<{
+    at?: string;
+    event?: string;
+    detail?: string;
   }>;
 };
 
