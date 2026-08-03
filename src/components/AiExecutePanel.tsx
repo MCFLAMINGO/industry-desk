@@ -10,11 +10,11 @@ const AI = INDUSTRIES.find((i) => i.id === "ai")!;
 export default function AiExecutePanel() {
   const [symbol, setSymbol] = useState("NVDA");
   const [notional, setNotional] = useState("25");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"review" | "dry" | "live" | null>(null);
   const [result, setResult] = useState<any>(null);
 
   async function onReview() {
-    setBusy(true);
+    setBusy("review");
     setResult(null);
     try {
       const data = await dryRunReview(symbol.trim().toUpperCase(), Number(notional) || 25);
@@ -24,7 +24,7 @@ export default function AiExecutePanel() {
     } catch (e) {
       toast.error("Review failed", { description: (e as Error).message });
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
@@ -32,7 +32,7 @@ export default function AiExecutePanel() {
     if (live && !window.confirm(`Place LIVE plan for ${symbol.toUpperCase()} ($${notional})?`)) {
       return;
     }
-    setBusy(true);
+    setBusy(live ? "live" : "dry");
     setResult(null);
     try {
       const data = await armPlan({
@@ -52,7 +52,7 @@ export default function AiExecutePanel() {
     } catch (e) {
       toast.error("Execute failed", { description: (e as Error).message });
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
@@ -105,19 +105,24 @@ export default function AiExecutePanel() {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <button type="button" className="btn btn-ghost" disabled={busy} onClick={onReview}>
-          Review only
+        <button type="button" className="btn btn-ghost" disabled={Boolean(busy)} onClick={onReview}>
+          {busy === "review" ? "Reviewing…" : "Review only"}
         </button>
-        <button type="button" className="btn btn-primary" disabled={busy} onClick={() => onExecute(false)}>
-          Execute (dry-run)
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={Boolean(busy)}
+          onClick={() => onExecute(false)}
+        >
+          {busy === "dry" ? "Arming dry-run…" : "Execute (dry-run)"}
         </button>
         <button
           type="button"
           className="btn btn-ghost border-[rgba(180,83,9,0.35)] text-[var(--danger)]"
-          disabled={busy}
+          disabled={Boolean(busy)}
           onClick={() => onExecute(true)}
         >
-          Place live plan
+          {busy === "live" ? "Placing live…" : "Place live plan"}
         </button>
       </div>
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Activity, Loader2, RefreshCw } from "lucide-react";
 import clsx from "clsx";
+import { toast } from "sonner";
 import { fetchOpenBook, fmtPct, fmtUsd, planFillTruth, type DeskPlan } from "@/lib/desk";
 
 const PHASES = ["wait", "open", "monitor", "add", "close"] as const;
@@ -91,7 +92,9 @@ function PlayCard({ plan }: { plan: DeskPlan }) {
   const waitingSession =
     plan.status === "waiting_trigger" &&
     (plan.open_when === "next_rth" ||
-      plan.steps?.some((s) => s.phase === "wait" && /next session|next RTH|Off-hours/i.test(String(s.detail || ""))));
+      plan.steps?.some((s) =>
+        s.phase === "wait" && /next session|next RTH|Off-hours/i.test(String(s.detail || ""))
+      ));
   const openAtLabel =
     plan.earliest_open_at != null
       ? new Date(plan.earliest_open_at).toLocaleString("en-US", {
@@ -246,34 +249,57 @@ function PlayCard({ plan }: { plan: DeskPlan }) {
 export default function PlayByPlayRail({
   bookFilter,
   symbols,
+  refreshToken = 0,
 }: {
   bookFilter?: string | null;
   symbols?: string[];
+  /** Bump from parent after Preview / Approve / desk Refresh */
+  refreshToken?: number;
 }) {
   const [plans, setPlans] = useState<DeskPlan[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { manual?: boolean; quiet?: boolean }) => {
+    const manual = Boolean(opts?.manual);
+    if (manual) setRefreshing(true);
     try {
       const data = await fetchOpenBook();
       if (data.error) throw new Error(data.error);
-      setPlans(data.plans || []);
+      const next = data.plans || [];
+      setPlans(next);
       setError(null);
-      setUpdatedAt(new Date().toISOString());
+      const at = new Date().toISOString();
+      setUpdatedAt(at);
+      if (manual && !opts?.quiet) {
+        const open = next.filter((p) => p.status !== "completed" && p.status !== "cancelled");
+        toast.success("Play-by-play updated", {
+          description: `${open.length} open plan${open.length === 1 ? "" : "s"} · ${new Date(at).toLocaleTimeString()}`,
+        });
+      }
+      return next;
     } catch (e) {
-      setError((e as Error).message);
+      const msg = (e as Error).message;
+      setError(msg);
+      if (manual) toast.error("Play-by-play refresh failed", { description: msg });
+      return null;
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    load();
-    const iv = window.setInterval(load, 10_000);
+    load({ quiet: true });
+    const iv = window.setInterval(() => load({ quiet: true }), 10_000);
     return () => window.clearInterval(iv);
   }, [load]);
+
+  useEffect(() => {
+    if (refreshToken > 0) load({ quiet: true });
+  }, [refreshToken, load]);
 
   const active = useMemo(() => {
     let open = plans.filter((p) => p.status !== "completed" && p.status !== "cancelled");
@@ -284,6 +310,8 @@ export default function PlayByPlayRail({
     open.sort((a, b) => Number(Boolean(b.live)) - Number(Boolean(a.live)));
     return open;
   }, [plans, bookFilter, symbols]);
+
+  const spinning = loading || refreshing;
 
   return (
     <section className="mb-8">
@@ -298,15 +326,16 @@ export default function PlayByPlayRail({
         </div>
         <button
           type="button"
-          onClick={load}
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--teal-deep)] hover:underline"
+          disabled={spinning}
+          onClick={() => load({ manual: true })}
+          className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-white/70 px-3 py-1.5 text-sm font-medium text-[var(--teal-deep)] hover:border-[var(--teal)] disabled:opacity-50"
         >
-          {loading ? (
+          {spinning ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
             <RefreshCw className="h-3.5 w-3.5" />
           )}
-          Refresh
+          {refreshing ? "Refreshing…" : "Refresh open book"}
         </button>
       </div>
 
@@ -326,7 +355,7 @@ export default function PlayByPlayRail({
       {updatedAt ? (
         <p className="mt-3 flex items-center gap-1.5 text-xs text-[var(--ink-soft)]">
           <Activity className="h-3 w-3" />
-          Polling every 10s · last sync {new Date(updatedAt).toLocaleTimeString()}
+          Last sync {new Date(updatedAt).toLocaleTimeString()} · auto every 10s
         </p>
       ) : null}
     </section>

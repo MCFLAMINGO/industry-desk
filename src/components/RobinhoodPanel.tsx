@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Link2, RefreshCw } from "lucide-react";
+import { Link2, Loader2, RefreshCw } from "lucide-react";
 import {
   connectRobinhood,
   fetchPortfolio,
@@ -20,14 +20,18 @@ export default function RobinhoodPanel({ compact = false }: { compact?: boolean 
   const [status, setStatus] = useState<RhStatus | null>(null);
   const [buyingPower, setBuyingPower] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  async function refresh() {
+  async function refresh(opts?: { manual?: boolean }) {
+    const manual = Boolean(opts?.manual);
+    if (manual) setRefreshing(true);
     try {
       const next = await fetchRhStatus();
       setStatus(next);
+      let bp: string | null = null;
       if (next?.configured) {
         const p = await fetchPortfolio();
-        const bp =
+        bp =
           p?.portfolio?.parsed?.data?.buying_power?.buying_power ||
           p?.portfolio?.parsed?.data?.cash ||
           null;
@@ -35,8 +39,25 @@ export default function RobinhoodPanel({ compact = false }: { compact?: boolean 
       } else {
         setBuyingPower(null);
       }
+      if (manual) {
+        toast.success(next?.configured ? "Robinhood status updated" : "Status refreshed", {
+          description: [
+            next?.configured ? `Account ${maskAccount(next.account_number)}` : "Not connected",
+            next?.live_trading_enabled ? "live ON" : "live off",
+            bp ? `BP $${bp}` : null,
+            new Date().toLocaleTimeString(),
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        });
+      }
     } catch (e) {
       setStatus({ configured: false, error: (e as Error).message });
+      if (manual) {
+        toast.error("Refresh failed", { description: (e as Error).message });
+      }
+    } finally {
+      if (manual) setRefreshing(false);
     }
   }
 
@@ -58,6 +79,7 @@ export default function RobinhoodPanel({ compact = false }: { compact?: boolean 
   }
 
   const connected = Boolean(status?.configured);
+  const spinning = refreshing || busy;
 
   return (
     <div className={`glass rounded-3xl ${compact ? "p-4" : "p-5"} space-y-4`}>
@@ -106,22 +128,24 @@ export default function RobinhoodPanel({ compact = false }: { compact?: boolean 
         <button
           type="button"
           className="btn btn-ghost"
-          disabled={busy}
-          onClick={async () => {
-            await refresh();
-            toast.success("Status refreshed");
-          }}
+          disabled={spinning}
+          onClick={() => refresh({ manual: true })}
         >
-          <RefreshCw className="h-4 w-4" /> Refresh
+          {refreshing ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          {refreshing ? "Refreshing…" : "Refresh status"}
         </button>
         <button
           type="button"
           className="btn btn-primary"
-          disabled={busy}
+          disabled={spinning}
           onClick={onConnect}
         >
           <Link2 className="h-4 w-4" />
-          {connected ? "Reconnect" : "Connect Robinhood"}
+          {busy ? "Opening Robinhood…" : connected ? "Reconnect" : "Connect Robinhood"}
         </button>
       </div>
     </div>
