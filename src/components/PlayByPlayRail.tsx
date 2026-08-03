@@ -321,8 +321,8 @@ export default function PlayByPlayRail({
             Play-by-play
           </p>
           <p className="mt-1 text-sm text-[var(--ink-soft)]">
-            Desk-armed plans only. Dry-run is paper — your real Robinhood fills live in{" "}
-            <span className="font-medium text-[var(--ink)]">Your Robinhood book</span> above.
+            Desk-armed plans only. Dry-run is paper — real fills are in{" "}
+            <span className="font-medium text-[var(--ink)]">Live positions</span> at the top.
           </p>
         </div>
         <button

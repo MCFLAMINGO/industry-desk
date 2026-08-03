@@ -20,7 +20,12 @@ import {
   type DeskRank,
   type IndustryTape,
 } from "@/lib/desk";
-import { fetchRhStatus, type RhStatus } from "@/lib/robinhood";
+import {
+  fetchLivePositions,
+  fetchRhStatus,
+  type RhLivePosition,
+  type RhStatus,
+} from "@/lib/robinhood";
 import PlayByPlayRail from "@/components/PlayByPlayRail";
 
 type SodStep = { title: string; detail: string; ready: boolean };
@@ -79,12 +84,12 @@ function buildSodSteps(input: {
       ready: Boolean(top) && !top?.inBook,
     },
     {
-      title: "Watch Open book",
+      title: "Watch positions",
       detail: held.length
-        ? `Robinhood holds in books: ${held.join(", ")}. Play-by-play tracks marks below.`
+        ? `Live RH holds: ${held.join(", ")} — pinned at the top of this page.`
         : bookSymbols.length
-          ? `No Robinhood holdings in ${book === "all" ? "industry books" : book} right now — submitted ≠ filled.`
-          : "Open book loads below.",
+          ? `No RH holdings in ${book === "all" ? "industry books" : book} — Live positions rail is above Start of day.`
+          : "Live positions rail is above Start of day.",
       ready: true,
     },
   ];
@@ -117,12 +122,36 @@ export default function DeskBoard() {
   const [desk, setDesk] = useState<DeskDayState | null>(null);
   const [tape, setTape] = useState<IndustryTape | null>(null);
   const [rh, setRh] = useState<RhStatus | null>(null);
+  const [livePositions, setLivePositions] = useState<RhLivePosition[]>([]);
+  const [positionsLoading, setPositionsLoading] = useState(true);
+  const [positionsError, setPositionsError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [arming, setArming] = useState<string | null>(null);
   const [notional, setNotional] = useState(25);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [deskUpdatedAt, setDeskUpdatedAt] = useState<string | null>(null);
   const [playRefreshToken, setPlayRefreshToken] = useState(0);
+
+  const loadPositions = useCallback(async (opts?: { quiet?: boolean }) => {
+    if (!opts?.quiet) setPositionsLoading(true);
+    try {
+      const data = await fetchLivePositions();
+      if (!data.ok) {
+        setPositionsError(data.error || "Could not load positions");
+        setLivePositions([]);
+        return data;
+      }
+      setLivePositions(data.positions);
+      setPositionsError(null);
+      return data;
+    } catch (e) {
+      setPositionsError((e as Error).message);
+      setLivePositions([]);
+      return null;
+    } finally {
+      setPositionsLoading(false);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -133,6 +162,8 @@ export default function DeskBoard() {
       fetchOpenBook(),
       fetchRhStatus(),
     ]);
+    // Positions load in parallel path so the top rail always updates
+    void loadPositions({ quiet: true });
 
     let nextDesk: DeskDayState | null = null;
     if (d.status === "fulfilled") {
@@ -150,7 +181,7 @@ export default function DeskBoard() {
       toast.error("Could not load open book", {
         description: String(p.reason?.message || p.reason),
       });
-    } else if (p.value.error) {
+    } else if (p.status === "fulfilled" && p.value.error) {
       errors.push(`Open book: ${p.value.error}`);
     }
 
@@ -160,11 +191,16 @@ export default function DeskBoard() {
     const at = new Date().toISOString();
     setDeskUpdatedAt(at);
     return { desk: nextDesk, at };
-  }, [book]);
+  }, [book, loadPositions]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const iv = window.setInterval(() => loadPositions({ quiet: true }), 15_000);
+    return () => window.clearInterval(iv);
+  }, [loadPositions]);
 
   const rankings = useMemo(() => {
     const rows = desk?.state?.rankings || [];
@@ -186,17 +222,22 @@ export default function DeskBoard() {
     setBusy(true);
     try {
       await runDeskPass(false);
-      const { desk: next, at } = await load();
+      const [{ desk: next, at }, pos] = await Promise.all([
+        load(),
+        loadPositions({ quiet: true }),
+      ]);
       setPlayRefreshToken((n) => n + 1);
       const rows = next?.state?.rankings || [];
       const forBook =
         !book || book === "all" ? rows : rows.filter((r) => r.industryId === book);
       const session = next?.et?.isRth ? "RTH open" : "session closed";
       const lead = forBook[0]?.symbol;
+      const heldN = pos && "positions" in pos ? pos.positions.length : livePositions.length;
       toast.success("Desk refreshed", {
         description: [
           `${forBook.length} ranked play${forBook.length === 1 ? "" : "s"}`,
           lead ? `lead ${lead}` : null,
+          `${heldN} RH position${heldN === 1 ? "" : "s"}`,
           session,
           new Date(at).toLocaleTimeString(),
         ]
@@ -212,8 +253,8 @@ export default function DeskBoard() {
 
   async function onArm(rank: DeskRank, live: boolean) {
     if (live && rank.inBook) {
-      toast.message("Already open", {
-        description: "Live plan or Robinhood hold blocks Approve live.",
+      toast.message("Approve live blocked", {
+        description: `${rank.symbol} is already held or has a live plan — manage it in Your Robinhood book / play-by-play.`,
       });
       return;
     }
@@ -248,6 +289,27 @@ export default function DeskBoard() {
     if (tapeBook?.names?.length) return tapeBook.names.map((n) => n.symbol);
     return meta.tickers;
   }, [tapeBook, meta.tickers]);
+
+  /** Prefer live portfolio fetch; fall back to desk-day rhActivity */
+  const heldPositions = useMemo(() => {
+    const fromLive = livePositions;
+    const fromDesk = desk?.state?.rhActivity?.positions || [];
+    const merged = new Map<string, RhLivePosition>();
+    for (const p of fromDesk) {
+      merged.set(String(p.symbol).toUpperCase(), {
+        symbol: String(p.symbol).toUpperCase(),
+        quantity: Number(p.quantity || 0),
+        side: p.side || "long",
+        avgCost: p.avgCost ?? null,
+        marketValue: p.marketValue ?? null,
+      });
+    }
+    for (const p of fromLive) merged.set(p.symbol, p);
+    const all = [...merged.values()];
+    if (!book || book === "all") return all;
+    const set = new Set(bookSymbols.map((s) => s.toUpperCase()));
+    return all.filter((p) => set.has(p.symbol));
+  }, [livePositions, desk, book, bookSymbols]);
 
   const sodSteps = useMemo(
     () =>
@@ -338,6 +400,103 @@ export default function DeskBoard() {
         ) : null}
       </div>
 
+      <section className="mb-8">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--teal)]">
+              Live positions
+            </p>
+            <p className="mt-1 text-sm text-[var(--ink-soft)]">
+              Agentic holdings first — app fills show here. Dry-run play-by-play below is paper only.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={positionsLoading || busy}
+            onClick={async () => {
+              const data = await loadPositions();
+              if (data && "ok" in data && data.ok) {
+                toast.success("Positions updated", {
+                  description: `${data.positions.length} holding${data.positions.length === 1 ? "" : "s"} · ${new Date().toLocaleTimeString()}`,
+                });
+              } else {
+                toast.error("Positions refresh failed", {
+                  description: (data && "error" in data && data.error) || positionsError || "Unknown",
+                });
+              }
+            }}
+            className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-white/70 px-3 py-1.5 text-sm font-medium text-[var(--teal-deep)] hover:border-[var(--teal)] disabled:opacity-50"
+          >
+            <RefreshCw className={clsx("h-3.5 w-3.5", positionsLoading && "animate-spin")} />
+            {positionsLoading ? "Loading…" : "Refresh positions"}
+          </button>
+        </div>
+        {positionsError ? (
+          <p className="mb-3 text-sm text-[var(--danger)]">Positions — {positionsError}</p>
+        ) : null}
+        {positionsLoading && heldPositions.length === 0 ? (
+          <div className="glass rounded-3xl p-5 text-sm text-[var(--ink-soft)]">
+            Loading Agentic positions…
+          </div>
+        ) : heldPositions.length === 0 ? (
+          <div className="glass rounded-3xl border border-dashed border-[var(--line)] p-5 text-sm text-[var(--ink-soft)]">
+            No live equity positions
+            {book && book !== "all" ? ` in ${meta.name}` : ""} right now.
+            {livePositions.length > 0
+              ? " Holdings exist in other books — switch to All."
+              : " Place in Robinhood or Approve live, then Refresh positions."}
+          </div>
+        ) : (
+          <div className="grid gap-3">
+            {heldPositions.map((p) => {
+              const markFromRank = rankings.find(
+                (r) => r.symbol.toUpperCase() === p.symbol
+              )?.price;
+              const mark = markFromRank ?? null;
+              const pnlPct =
+                mark != null && p.avgCost != null && p.avgCost !== 0
+                  ? ((mark - p.avgCost) / p.avgCost) * 100
+                  : null;
+              const pnlUsd =
+                mark != null && p.avgCost != null
+                  ? (mark - p.avgCost) * p.quantity
+                  : null;
+              return (
+                <article
+                  key={p.symbol}
+                  className="glass rounded-3xl border border-emerald-300/70 bg-emerald-50/40 p-4 sm:p-5"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="display text-2xl font-semibold">{p.symbol}</h2>
+                    <span className="rounded-full bg-emerald-600 px-2.5 py-0.5 text-xs font-semibold text-white">
+                      LIVE · RH held
+                    </span>
+                    <span className="rounded-full border border-[var(--line)] px-2 py-0.5 text-xs uppercase">
+                      {p.side}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-sm text-[var(--ink)]">
+                    {p.quantity} sh
+                    {p.avgCost != null ? ` · avg ${fmtUsd(p.avgCost)}` : ""}
+                    {mark != null ? ` · mark ${fmtUsd(mark)}` : ""}
+                    {p.marketValue != null ? ` · ${fmtUsd(p.marketValue)}` : ""}
+                    {pnlPct != null
+                      ? ` · P&L ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(2)}%`
+                      : ""}
+                    {pnlUsd != null
+                      ? ` (${pnlUsd >= 0 ? "+" : ""}${fmtUsd(pnlUsd)})`
+                      : ""}
+                  </p>
+                  <p className="mt-1 text-xs text-emerald-900">
+                    Real Agentic position — not the dry-run card in play-by-play.
+                  </p>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
       <section className="glass mb-8 rounded-3xl p-5 sm:p-6">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--teal)]">
           Start of day
@@ -409,86 +568,15 @@ export default function DeskBoard() {
         ) : null}
       </section>
 
-      {(() => {
-        const allPos = desk?.state?.rhActivity?.positions || [];
-        const bookSet = new Set(bookSymbols.map((s) => s.toUpperCase()));
-        const positions =
-          !book || book === "all"
-            ? allPos
-            : allPos.filter((p) => bookSet.has(String(p.symbol || "").toUpperCase()));
-        if (!desk?.state?.rhActivity && !allPos.length) return null;
-        return (
-          <section className="mb-8">
-            <div className="mb-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--teal)]">
-                Your Robinhood book
-              </p>
-              <p className="mt-1 text-sm text-[var(--ink-soft)]">
-                {desk?.state?.rhActivity?.note
-                  || "Live Agentic holdings — app/manual fills show here even when play-by-play is dry-run."}
-              </p>
-            </div>
-            {positions.length === 0 ? (
-              <div className="glass rounded-3xl p-5 text-sm text-[var(--ink-soft)]">
-                No Agentic equity positions
-                {book && book !== "all" ? ` in ${meta.name}` : ""} right now.
-                {allPos.length
-                  ? " (You have holdings in other books — try All.)"
-                  : " Trades you place in the Robinhood app land here after Refresh."}
-              </div>
-            ) : (
-              <div className="grid gap-3">
-                {positions.map((p) => (
-                  <article
-                    key={p.symbol}
-                    className="glass rounded-3xl border border-emerald-200/60 p-4 sm:p-5"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="display text-2xl font-semibold">{p.symbol}</h2>
-                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-900">
-                            RH held
-                          </span>
-                          <span className="rounded-full border border-[var(--line)] px-2 py-0.5 text-xs uppercase">
-                            {p.side || "long"}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-sm text-[var(--ink-soft)]">
-                          {p.quantity != null ? `${p.quantity} sh` : null}
-                          {p.avgCost != null ? ` · avg ${fmtUsd(p.avgCost)}` : null}
-                          {p.mark != null ? ` · mark ${fmtUsd(p.mark)}` : null}
-                          {p.marketValue != null ? ` · ${fmtUsd(p.marketValue)}` : null}
-                          {p.pnlPct != null
-                            ? ` · P&L ${p.pnlPct > 0 ? "+" : ""}${p.pnlPct.toFixed(2)}%`
-                            : null}
-                          {p.pnlUsd != null
-                            ? ` (${p.pnlUsd >= 0 ? "+" : ""}${fmtUsd(p.pnlUsd)})`
-                            : null}
-                        </p>
-                        {p.sourceNote ? (
-                          <p className="mt-2 text-xs font-medium text-emerald-900">{p.sourceNote}</p>
-                        ) : null}
-                      </div>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
-        );
-      })()}
-
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--teal)]">
             Ranked plays
           </p>
           <p className="mt-1 text-sm text-[var(--ink-soft)]">
-            Proposed next moves (not your fills). Dry-run ≠ Robinhood fill — holdings are in Your Robinhood book above.
-            Approve live needs{" "}
-            <span className="mono">ROBINHOOD_LIVE_TRADING</span>
-            {desk?.et?.isRth ? "." : " · off-hours approve waits for next open."}
+            Next moves only — live fills stay in Live positions at the top. Preview always works;
+            Approve live needs confirm + <span className="mono">ROBINHOOD_LIVE_TRADING</span>
+            {desk?.et?.isRth ? "." : " · off-hours waits for next open."}
           </p>
         </div>
         <label className="flex items-center gap-2 text-sm text-[var(--ink-soft)]">
@@ -637,11 +725,23 @@ export default function DeskBoard() {
                   </button>
                   <button
                     type="button"
-                    disabled={Boolean(arming) || Boolean(r.inBook)}
+                    disabled={Boolean(arming)}
                     onClick={() => onArm(r, true)}
-                    className="btn btn-primary px-4 py-2 text-sm"
+                    className={clsx(
+                      "btn px-4 py-2 text-sm",
+                      r.inBook ? "btn-ghost opacity-80" : "btn-primary"
+                    )}
+                    title={
+                      r.inBook
+                        ? "Already held / live plan — tap for why Approve is blocked"
+                        : "Arm live plan on Agentic"
+                    }
                   >
-                    {arming === `${r.id}:live` ? "Approving…" : "Approve live"}
+                    {arming === `${r.id}:live`
+                      ? "Approving…"
+                      : r.inBook
+                        ? "Already held"
+                        : "Approve live"}
                   </button>
                 </div>
               </div>

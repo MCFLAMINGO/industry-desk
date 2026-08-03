@@ -26,6 +26,84 @@ export async function fetchPortfolio() {
   return res.json();
 }
 
+export type RhLivePosition = {
+  symbol: string;
+  quantity: number;
+  side: string;
+  avgCost: number | null;
+  marketValue: number | null;
+};
+
+function extractPositionRows(payload: unknown): Record<string, unknown>[] {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload as Record<string, unknown>[];
+  const root = payload as Record<string, unknown>;
+  const parsed = (root.parsed as Record<string, unknown>) || root;
+  const data = (parsed.data as Record<string, unknown>) || parsed;
+  const nested = (data.data as Record<string, unknown>) || data;
+  for (const key of ["results", "positions", "equity_positions", "items"]) {
+    const v = nested[key];
+    if (Array.isArray(v)) return v as Record<string, unknown>[];
+  }
+  if (Array.isArray(nested)) return nested as unknown as Record<string, unknown>[];
+  return [];
+}
+
+/** Live Agentic equity holdings — independent of desk-day state. */
+export async function fetchLivePositions(): Promise<{
+  ok: boolean;
+  positions: RhLivePosition[];
+  buyingPower: number | null;
+  accountNumber?: string | null;
+  error?: string;
+}> {
+  const res = await fetch("/api/robinhood?action=portfolio", { cache: "no-store" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.error) {
+    return {
+      ok: false,
+      positions: [],
+      buyingPower: null,
+      error: String(data.error || `HTTP ${res.status}`),
+    };
+  }
+
+  const rows = extractPositionRows(data.positions);
+  const positions: RhLivePosition[] = [];
+  for (const row of rows) {
+    const instrument = row.instrument as Record<string, unknown> | undefined;
+    const stock = row.stock as Record<string, unknown> | undefined;
+    const sym = String(row.symbol || instrument?.symbol || stock?.symbol || "").toUpperCase();
+    const qty = Number(row.quantity ?? row.shares ?? row.units ?? 0);
+    if (!sym || !Number.isFinite(qty) || qty === 0) continue;
+    const avg = Number(row.average_buy_price ?? row.avg_cost ?? row.average_price);
+    const mkt = Number(row.market_value ?? row.equity ?? row.value);
+    positions.push({
+      symbol: sym,
+      quantity: qty,
+      side: qty < 0 ? "short" : "long",
+      avgCost: Number.isFinite(avg) ? avg : null,
+      marketValue: Number.isFinite(mkt) ? mkt : null,
+    });
+  }
+  positions.sort(
+    (a, b) => Math.abs(b.marketValue || 0) - Math.abs(a.marketValue || 0)
+  );
+
+  const port = data.portfolio?.parsed?.data || data.portfolio?.parsed || data.portfolio?.data || {};
+  const nested = port.data || port;
+  const bpRaw =
+    nested?.buying_power?.buying_power ?? nested?.buying_power ?? nested?.unleveraged_buying_power;
+  const buyingPower = bpRaw != null && Number.isFinite(Number(bpRaw)) ? Number(bpRaw) : null;
+
+  return {
+    ok: true,
+    positions,
+    buyingPower,
+    accountNumber: data.account_number || null,
+  };
+}
+
 export async function dryRunReview(symbol: string, notionalUsd: number) {
   const res = await fetch("/api/robinhood", {
     method: "POST",
