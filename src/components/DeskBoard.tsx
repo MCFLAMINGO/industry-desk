@@ -17,11 +17,11 @@ import {
   fmtUsd,
   runDeskPass,
   type DeskDayState,
-  type DeskPlan,
   type DeskRank,
   type IndustryTape,
 } from "@/lib/desk";
 import { fetchRhStatus, type RhStatus } from "@/lib/robinhood";
+import PlayByPlayRail from "@/components/PlayByPlayRail";
 
 const STEPS = [
   "Analyze tape",
@@ -57,7 +57,6 @@ export default function DeskBoard() {
 
   const [desk, setDesk] = useState<DeskDayState | null>(null);
   const [tape, setTape] = useState<IndustryTape | null>(null);
-  const [plans, setPlans] = useState<DeskPlan[]>([]);
   const [rh, setRh] = useState<RhStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [arming, setArming] = useState<string | null>(null);
@@ -80,14 +79,13 @@ export default function DeskBoard() {
     if (t.status === "fulfilled") setTape(t.value);
     else errors.push(`Tape: ${t.reason?.message || t.reason}`);
 
-    if (p.status === "fulfilled") {
-      setPlans(p.value.plans || []);
-      if (p.value.error) errors.push(`Open book: ${p.value.error}`);
-    } else {
+    if (p.status === "rejected") {
       errors.push(`Could not load open book — ${p.reason?.message || p.reason}`);
       toast.error("Could not load open book", {
         description: String(p.reason?.message || p.reason),
       });
+    } else if (p.value.error) {
+      errors.push(`Open book: ${p.value.error}`);
     }
 
     if (s.status === "fulfilled") setRh(s.value);
@@ -155,15 +153,10 @@ export default function DeskBoard() {
     }
   }
 
-  const openForBook = useMemo(() => {
-    if (!book || book === "all") return plans;
-    const syms = new Set(
-      (tapeBook?.names || []).map((n) => n.symbol.toUpperCase()).concat(
-        meta.tickers.map((t) => t.toUpperCase())
-      )
-    );
-    return plans.filter((p) => syms.has(String(p.symbol || "").toUpperCase()));
-  }, [plans, book, tapeBook, meta.tickers]);
+  const bookSymbols = useMemo(() => {
+    if (tapeBook?.names?.length) return tapeBook.names.map((n) => n.symbol);
+    return meta.tickers;
+  }, [tapeBook, meta.tickers]);
 
   return (
     <main className="shell py-8 sm:py-10">
@@ -355,60 +348,11 @@ export default function DeskBoard() {
         )}
       </div>
 
-      <section className="mb-8">
-        <div className="mb-3 flex items-end justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--teal)]">
-              Open book
-            </p>
-            <p className="mt-1 text-sm text-[var(--ink-soft)]">
-              Live and dry-run plans on the Agentic worker.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={load}
-            className="text-sm font-medium text-[var(--teal-deep)] hover:underline"
-          >
-            Reload
-          </button>
-        </div>
-        {loadError ? (
-          <p className="mb-3 text-sm text-[var(--danger)]">{loadError}</p>
-        ) : null}
-        <div className="grid gap-3">
-          {openForBook.length === 0 ? (
-            <div className="glass rounded-3xl p-5 text-sm text-[var(--ink-soft)]">
-              No open plans for this book.
-            </div>
-          ) : (
-            openForBook.map((p) => (
-              <article key={p.id} className="glass rounded-3xl p-4 sm:p-5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="display text-xl font-semibold">{p.symbol || "—"}</h3>
-                  <span className="rounded-full border border-[var(--line)] px-2 py-0.5 text-xs uppercase">
-                    {p.side || "—"}
-                  </span>
-                  <span
-                    className={clsx(
-                      "rounded-full px-2 py-0.5 text-xs",
-                      p.live ? "bg-[var(--teal-deep)] text-white" : "bg-amber-100 text-amber-900"
-                    )}
-                  >
-                    {p.live ? "Live" : "Dry-run"}
-                  </span>
-                  <span className="text-xs text-[var(--ink-soft)]">{p.status}</span>
-                </div>
-                <p className="mt-2 text-sm text-[var(--ink-soft)]">
-                  {p.kind || "plan"}
-                  {p.filled_notional != null ? ` · filled ${fmtUsd(p.filled_notional)}` : ""}
-                  {p.updated_at ? ` · updated ${new Date(p.updated_at).toLocaleString()}` : ""}
-                </p>
-              </article>
-            ))
-          )}
-        </div>
-      </section>
+      {loadError ? (
+        <p className="mb-4 text-sm text-[var(--danger)]">{loadError}</p>
+      ) : null}
+
+      <PlayByPlayRail bookFilter={book} symbols={bookSymbols} />
     </main>
   );
 }

@@ -4,24 +4,24 @@
 
 Live: [industry-desk.vercel.app](https://industry-desk.vercel.app)
 
-## Lab → product
+## Lab + product (pre-launch)
+
+Until Industry Desk goes live to customers, ship features to **both**:
 
 | Surface | Role |
 |---|---|
-| **GSB Swarm dashboard** | Testing ground. Try new trading / desk features here first. |
-| **Industry Desk (this repo)** | Customer-facing product. Graduate a feature here after it works in the lab. |
+| **GSB Swarm dashboard** | Testing ground / operator lab |
+| **Industry Desk (this repo)** | Product UI — keep in sync with lab features |
 
-Workflow:
+Workflow for now:
 
-1. Prototype and break things in the Swarm dashboard / Railway swarm.
-2. When a flow is solid (connect, tape, rank, preview, approve, open book), port the UX into this app.
-3. Keep Swarm as the lab — don’t turn Industry Desk into an ops console.
-
-Robinhood tokens and plan workers still run on the shared Railway trading backend today; this app is the product UI over that rail.
+1. Build / try in Swarm dashboard **and** mirror into this app in the same pass.
+2. Shared Railway trading backend powers both (Robinhood tokens, plans, desk-day).
+3. After go-live: lab stays experimental; product only gets stable graduated UX.
 
 ## What’s live
 
-- `/desk?book=restaurants` (and other books) — Analyze → Rank → Approve → Open book
+- `/desk?book=…` — Analyze → Rank → Approve → **Play-by-play** (real-time mark / stop / target)
 - `/connect` — Robinhood Agentic connect (prefer Mac localhost bridge if HTTPS “Uh oh”)
 - `/ai` — focused AI sleeve shortcuts
 - Home industry grid → desk books
