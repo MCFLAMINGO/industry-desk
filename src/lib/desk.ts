@@ -32,6 +32,10 @@ export type DeskPlan = {
   strategy?: string;
   filled_notional?: number | null;
   open_filled?: boolean;
+  open_submitted?: boolean;
+  order_state?: string | null;
+  order_id?: string | null;
+  filled_qty?: number | null;
   last_mark?: number | null;
   levels?: {
     entry?: number | null;
@@ -47,6 +51,26 @@ export type DeskPlan = {
     title?: string;
     status?: string;
     detail?: string;
+    result?: {
+      ok?: boolean;
+      mode?: string;
+      message?: string;
+      error?: string;
+      order?: Record<string, unknown>;
+      placed?: {
+        parsed?: {
+          data?: {
+            order?: {
+              id?: string;
+              state?: string;
+              cumulative_quantity?: string | number;
+              quantity?: string | number;
+              dollar_based_amount?: { amount?: string };
+            };
+          };
+        };
+      };
+    };
   }>;
   events?: Array<{
     at?: string;
@@ -54,6 +78,40 @@ export type DeskPlan = {
     detail?: string;
   }>;
 };
+
+/** True fill vs "submitted but never filled" (queued GFD that expired). */
+export function planFillTruth(plan: DeskPlan): {
+  kind: "dry" | "filled" | "submitted_unfilled" | "unknown";
+  label: string;
+  orderState?: string | null;
+} {
+  const open = plan.steps?.find((s) => s.phase === "open");
+  if (!plan.live || plan.dry_run || open?.status === "dry_run_done") {
+    return { kind: "dry", label: "Dry-run · not placed" };
+  }
+  const order = open?.result?.placed?.parsed?.data?.order;
+  const state = String(plan.order_state || order?.state || "").toLowerCase() || null;
+  const cum = Number(plan.filled_qty ?? order?.cumulative_quantity ?? 0);
+  if (cum > 0 || state === "filled" || state === "partially_filled") {
+    const amt = plan.filled_notional;
+    return {
+      kind: "filled",
+      label: amt != null ? `Filled ~$${amt}` : "Filled in Robinhood",
+      orderState: state,
+    };
+  }
+  if (state === "queued" || state === "unconfirmed" || state === "confirmed" || open?.status === "done") {
+    return {
+      kind: "submitted_unfilled",
+      label: `Submitted · ${state || "queued"} · not filled (no position)`,
+      orderState: state,
+    };
+  }
+  if (plan.open_filled && plan.filled_notional != null) {
+    return { kind: "unknown", label: `Marked ~$${plan.filled_notional} (verify in RH)`, orderState: state };
+  }
+  return { kind: "unknown", label: "No fill yet", orderState: state };
+}
 
 export type DeskDayState = {
   ok?: boolean;
@@ -99,6 +157,13 @@ export type DeskDayState = {
       configured?: boolean;
       quoted?: number;
       buyingPower?: number | null;
+      heldInUniverse?: string[];
+      gloss?: {
+        held?: string;
+        quotes?: string;
+        volume?: string;
+      };
+      note?: string;
     };
   };
 };
@@ -113,6 +178,7 @@ export type IndustryTape = {
     core: string[];
     tangential: string[];
     avgChangePct?: number | null;
+    quoted?: number;
     names?: Array<{
       symbol: string;
       scope: string;
