@@ -88,6 +88,22 @@ function PlayCard({ plan }: { plan: DeskPlan }) {
   const monitoring = plan.status === "monitoring" || plan.status === "waiting_trigger";
   const fill = planFillTruth(plan);
   const hasPosition = fill.kind === "filled";
+  const waitingSession =
+    plan.status === "waiting_trigger" &&
+    (plan.open_when === "next_rth" ||
+      plan.steps?.some((s) => s.phase === "wait" && /next session|next RTH|Off-hours/i.test(String(s.detail || ""))));
+  const openAtLabel =
+    plan.earliest_open_at != null
+      ? new Date(plan.earliest_open_at).toLocaleString("en-US", {
+          timeZone: "America/New_York",
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          timeZoneName: "short",
+        })
+      : null;
   const pnlTone =
     !hasPosition && fill.kind !== "dry"
       ? "text-[var(--ink-soft)]"
@@ -114,9 +130,15 @@ function PlayCard({ plan }: { plan: DeskPlan }) {
             >
               {live ? "LIVE" : "DRY-RUN"}
             </span>
-            <span className="text-xs text-[var(--ink-soft)]">
-              {plan.status?.replace(/_/g, " ")}
-            </span>
+            {waitingSession ? (
+              <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-900">
+                Armed · opens {openAtLabel || "next RTH"}
+              </span>
+            ) : (
+              <span className="text-xs text-[var(--ink-soft)]">
+                {plan.status?.replace(/_/g, " ")}
+              </span>
+            )}
           </div>
           <p className="mt-1 text-sm text-[var(--ink-soft)]">
             Mark <span className="mono text-[var(--ink)]">{fmtPx(mark)}</span>
