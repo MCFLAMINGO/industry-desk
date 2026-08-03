@@ -41,6 +41,9 @@ function buildSodSteps(input: {
   const quoted = tapeBook?.quoted ?? rh?.quoted;
   const held = rh?.heldInUniverse || [];
 
+  const syn = desk?.state?.synthesis || mp?.synthesis || null;
+  const synReady = Boolean(syn?.global?.narrative || syn?.narrative);
+
   return [
     {
       title: "Analyze tape",
@@ -51,9 +54,19 @@ function buildSodSteps(input: {
       ready: Boolean(quoted),
     },
     {
+      title: "Synthesize",
+      detail: syn?.narrative
+        || syn?.global?.narrative
+        || "Global macro + micro Elite intel fold into the top ranks on Refresh.",
+      ready: synReady,
+    },
+    {
       title: "Pick a play",
       detail: top
-        ? `Lead: ${top.symbol} ${top.side} · ${top.strategy} · score ${top.score}${top.inBook ? " · already open" : ""}.`
+        ? `Lead: ${top.symbol} ${top.side} · ${top.strategy} · score ${top.score}`
+          + (top.synthesis?.verdict ? ` · Elite ${top.synthesis.verdict}` : "")
+          + (top.inBook ? " · already open" : "")
+          + "."
         : "No ranked play yet — hit Refresh after quotes land.",
       ready: Boolean(top),
     },
@@ -72,13 +85,6 @@ function buildSodSteps(input: {
           ? `No Robinhood holdings in ${book === "all" ? "industry books" : book} right now — submitted ≠ filled.`
           : "Open book loads below.",
       ready: true,
-    },
-    {
-      title: "Results",
-      detail: desk?.state?.note
-        || mp?.narrative
-        || "Session results appear after fills and closes.",
-      ready: Boolean(desk?.state?.note || mp?.narrative),
     },
   ];
 }
@@ -362,6 +368,22 @@ export default function DeskBoard() {
             {desk.state.morningPlan.headline}
           </p>
         ) : null}
+        {(desk?.state?.synthesis || desk?.state?.morningPlan?.synthesis) ? (
+          <div className="mt-4 rounded-2xl border border-[var(--line)] bg-white/50 px-3 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--teal)]">
+              Global ↔ micro
+            </p>
+            <p className="mt-1.5 text-sm leading-relaxed text-[var(--ink)]">
+              {(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.global?.narrative
+                || (desk.state.synthesis || desk.state.morningPlan?.synthesis)?.narrative}
+            </p>
+            {(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.top?.length ? (
+              <p className="mt-1 text-xs text-[var(--ink-soft)]">
+                Top micro: {(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.top?.join(" · ")}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         {!desk?.et?.isRth ? (
           <p className="mt-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
             Session closed — you can still <span className="font-semibold">Approve live</span> when you have time
@@ -377,7 +399,7 @@ export default function DeskBoard() {
             Ranked plays
           </p>
           <p className="mt-1 text-sm text-[var(--ink-soft)]">
-            Preview = dry-run. Approve live needs confirm +{" "}
+            Scores fuse Robinhood tape with Elite global/micro. Preview = dry-run. Approve live needs{" "}
             <span className="mono">ROBINHOOD_LIVE_TRADING</span>
             {desk?.et?.isRth ? "." : " · off-hours approve waits for next open."}
           </p>
@@ -432,6 +454,19 @@ export default function DeskBoard() {
                         Dry preview
                       </span>
                     ) : null}
+                    {r.synthesis?.verdict ? (
+                      <span
+                        className={clsx(
+                          "rounded-full px-2 py-0.5 text-xs font-semibold",
+                          r.synthesis.verdict === "BUY" && "bg-emerald-100 text-emerald-900",
+                          r.synthesis.verdict === "AVOID" && "bg-rose-100 text-rose-900",
+                          r.synthesis.verdict === "HOLD" && "bg-slate-100 text-slate-800"
+                        )}
+                      >
+                        Elite {r.synthesis.verdict}
+                        {r.synthesis.conviction != null ? ` · ${r.synthesis.conviction}` : ""}
+                      </span>
+                    ) : null}
                   </div>
                   <p className="mt-1 text-sm text-[var(--ink-soft)]">
                     {r.industryLabel} · score {r.score}
@@ -440,6 +475,14 @@ export default function DeskBoard() {
                   </p>
                   {r.reasons?.length ? (
                     <p className="mt-2 text-xs text-[var(--ink-soft)]">{r.reasons.join(" · ")}</p>
+                  ) : null}
+                  {r.synthesis?.narrative ? (
+                    <p className="mt-2 text-xs leading-relaxed text-[var(--teal-deep)]">
+                      {r.synthesis.narrative}
+                      {r.synthesis.microReasons?.length
+                        ? ` — ${r.synthesis.microReasons.slice(0, 2).join("; ")}`
+                        : ""}
+                    </p>
                   ) : null}
                 </div>
                 <div className="flex flex-wrap gap-2">

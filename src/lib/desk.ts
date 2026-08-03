@@ -1,5 +1,49 @@
 /** Industry Desk → Railway desk-day / tape / plans helpers. */
 
+export type DeskSynthesisMicro = {
+  globalFit?: string | null;
+  verdict?: string | null;
+  conviction?: number | null;
+  microReasons?: string[];
+  narrative?: string | null;
+  newsSentiment?: string | null;
+  scoreDelta?: number | null;
+  fundamentals?: {
+    sector?: string | null;
+    industry?: string | null;
+    recommendation?: string | null;
+    revenue_growth?: number | null;
+  } | null;
+  technicals?: {
+    trend?: string | null;
+    last?: number | null;
+    rsi?: number | null;
+  } | null;
+};
+
+export type DeskSynthesis = {
+  enabled?: boolean;
+  at?: string;
+  duration_ms?: number;
+  narrative?: string;
+  top?: string[];
+  microCount?: number;
+  microAttempted?: number;
+  global?: {
+    available?: boolean;
+    regime?: string;
+    narrative?: string;
+    reasons?: string[];
+    industryLead?: {
+      id?: string;
+      label?: string;
+      avgScore?: number;
+      changePct?: number | null;
+    } | null;
+  };
+  error?: string;
+};
+
 export type DeskRank = {
   id: string;
   symbol: string;
@@ -19,6 +63,8 @@ export type DeskRank = {
   inBook?: boolean;
   dryPreview?: boolean;
   rhHeld?: boolean;
+  /** Global + micro Elite fold-in for this play */
+  synthesis?: DeskSynthesisMicro | null;
 };
 
 export type DeskPlan = {
@@ -144,10 +190,12 @@ export type DeskDayState = {
     note?: string;
     phase?: string;
     rankings?: DeskRank[];
+    synthesis?: DeskSynthesis | null;
     morningPlan?: {
       headline?: string;
       narrative?: string;
       proposeArm?: DeskRank | null;
+      synthesis?: DeskSynthesis | null;
     };
     industryTilt?: Array<{
       industryId: string;
