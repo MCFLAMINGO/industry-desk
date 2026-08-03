@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Activity, Loader2, RefreshCw } from "lucide-react";
 import clsx from "clsx";
-import { fetchOpenBook, fmtPct, fmtUsd, type DeskPlan } from "@/lib/desk";
+import { fetchOpenBook, fmtPct, fmtUsd, planFillTruth, type DeskPlan } from "@/lib/desk";
 
 const PHASES = ["wait", "open", "monitor", "add", "close"] as const;
 
@@ -86,8 +86,16 @@ function PlayCard({ plan }: { plan: DeskPlan }) {
     .find((e) => e.event === "tick" || e.event === "tick_wait");
   const live = Boolean(plan.live);
   const monitoring = plan.status === "monitoring" || plan.status === "waiting_trigger";
+  const fill = planFillTruth(plan);
+  const hasPosition = fill.kind === "filled";
   const pnlTone =
-    pnl == null ? "text-[var(--ink-soft)]" : pnl >= 0 ? "text-[var(--ok)]" : "text-[var(--danger)]";
+    !hasPosition && fill.kind !== "dry"
+      ? "text-[var(--ink-soft)]"
+      : pnl == null
+        ? "text-[var(--ink-soft)]"
+        : pnl >= 0
+          ? "text-[var(--ok)]"
+          : "text-[var(--danger)]";
 
   return (
     <article className="glass rounded-3xl p-4 sm:p-5 space-y-3">
@@ -116,11 +124,25 @@ function PlayCard({ plan }: { plan: DeskPlan }) {
             {" · "}Stop <span className="mono">{fmtPx(stop)}</span>
             {" · "}Target <span className="mono">{fmtPx(target)}</span>
           </p>
+          <p
+            className={clsx(
+              "mt-1 text-xs font-medium",
+              fill.kind === "submitted_unfilled" ? "text-[var(--danger)]" : "text-[var(--ink-soft)]"
+            )}
+          >
+            {fill.label}
+          </p>
         </div>
         <div className="text-right">
-          <div className={clsx("text-2xl font-semibold mono", pnlTone)}>{fmtPct(pnl)}</div>
+          <div className={clsx("text-2xl font-semibold mono", pnlTone)}>
+            {hasPosition || fill.kind === "dry" ? fmtPct(pnl) : "—"}
+          </div>
           <div className="text-xs text-[var(--ink-soft)]">
-            {plan.filled_notional != null ? `${fmtUsd(plan.filled_notional)} filled` : "sizing / paper"}
+            {fill.kind === "filled"
+              ? "Position P&L vs entry"
+              : fill.kind === "dry"
+                ? "Paper mark"
+                : "No position yet"}
           </div>
         </div>
       </div>

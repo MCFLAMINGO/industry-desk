@@ -23,13 +23,65 @@ import {
 import { fetchRhStatus, type RhStatus } from "@/lib/robinhood";
 import PlayByPlayRail from "@/components/PlayByPlayRail";
 
-const STEPS = [
-  "Analyze tape",
-  "Pick a play",
-  "Preview or Approve live",
-  "Watch Open book",
-  "Results",
-] as const;
+type SodStep = { title: string; detail: string; ready: boolean };
+
+function buildSodSteps(input: {
+  desk: DeskDayState | null;
+  tape: IndustryTape | null;
+  book: string;
+  rankings: DeskRank[];
+  bookSymbols: string[];
+}): SodStep[] {
+  const { desk, tape, book, rankings, bookSymbols } = input;
+  const rh = desk?.state?.rhAssist;
+  const mp = desk?.state?.morningPlan;
+  const et = desk?.et;
+  const top = rankings[0] || mp?.proposeArm || null;
+  const tapeBook = tape?.books?.[0];
+  const quoted = tapeBook?.quoted ?? rh?.quoted;
+  const held = rh?.heldInUniverse || [];
+
+  return [
+    {
+      title: "Analyze tape",
+      detail: rh?.gloss?.quotes
+        || (quoted != null
+          ? `${quoted} live Robinhood quotes${book !== "all" ? ` · ${book}` : ""}.`
+          : "Waiting on Robinhood tape…"),
+      ready: Boolean(quoted),
+    },
+    {
+      title: "Pick a play",
+      detail: top
+        ? `Lead: ${top.symbol} ${top.side} · ${top.strategy} · score ${top.score}${top.inBook ? " · already open" : ""}.`
+        : "No ranked play yet — hit Refresh after quotes land.",
+      ready: Boolean(top),
+    },
+    {
+      title: "Preview or Approve live",
+      detail: et?.isRth
+        ? "RTH open — Preview = dry-run, Approve live places on Agentic."
+        : "Outside RTH — live market orders queue and often never fill (GFD). Prefer Preview until the open.",
+      ready: Boolean(top) && !top?.inBook,
+    },
+    {
+      title: "Watch Open book",
+      detail: held.length
+        ? `Robinhood holds in books: ${held.join(", ")}. Play-by-play tracks marks below.`
+        : bookSymbols.length
+          ? `No Robinhood holdings in ${book === "all" ? "industry books" : book} right now — submitted ≠ filled.`
+          : "Open book loads below.",
+      ready: true,
+    },
+    {
+      title: "Results",
+      detail: desk?.state?.note
+        || mp?.narrative
+        || "Session results appear after fills and closes.",
+      ready: Boolean(desk?.state?.note || mp?.narrative),
+    },
+  ];
+}
 
 function bookMeta(id: string | null) {
   if (!id || id === "all") {
@@ -158,6 +210,18 @@ export default function DeskBoard() {
     return meta.tickers;
   }, [tapeBook, meta.tickers]);
 
+  const sodSteps = useMemo(
+    () =>
+      buildSodSteps({
+        desk,
+        tape,
+        book,
+        rankings,
+        bookSymbols,
+      }),
+    [desk, tape, book, rankings, bookSymbols]
+  );
+
   return (
     <main className="shell py-8 sm:py-10">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--teal)]">
@@ -234,22 +298,37 @@ export default function DeskBoard() {
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--teal)]">
           Start of day
         </p>
-        <ol className="mt-4 grid gap-3 sm:grid-cols-5">
-          {STEPS.map((label, i) => (
-            <li key={label} className="flex items-start gap-2 text-sm">
-              <span className="mono flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--teal-deep)] text-xs font-semibold text-[#f0fdfa]">
-                {i + 1}
-              </span>
-              <span className="pt-0.5 text-[var(--ink)]">{label}</span>
+        <ol className="mt-4 grid gap-4 sm:grid-cols-5">
+          {sodSteps.map((step, i) => (
+            <li key={step.title} className="min-w-0">
+              <div className="flex items-start gap-2">
+                <span
+                  className={clsx(
+                    "mono flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+                    step.ready
+                      ? "bg-[var(--teal-deep)] text-[#f0fdfa]"
+                      : "bg-[var(--line)] text-[var(--ink-soft)]"
+                  )}
+                >
+                  {i + 1}
+                </span>
+                <div className="min-w-0 pt-0.5">
+                  <p className="text-sm font-semibold text-[var(--ink)]">{step.title}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-[var(--ink-soft)]">{step.detail}</p>
+                </div>
+              </div>
             </li>
           ))}
         </ol>
-        {desk?.state?.note ? (
-          <p className="mt-4 text-sm text-[var(--ink-soft)]">{desk.state.note}</p>
-        ) : null}
         {desk?.state?.morningPlan?.headline ? (
-          <p className="mt-2 text-sm font-medium text-[var(--ink)]">
+          <p className="mt-4 text-sm font-medium text-[var(--ink)]">
             {desk.state.morningPlan.headline}
+          </p>
+        ) : null}
+        {!desk?.et?.isRth ? (
+          <p className="mt-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+            Outside regular hours — Agentic market orders often stay <span className="font-semibold">queued</span> and
+            never become a position. Portfolio still shows $0 equity / pending deposit until something actually fills.
           </p>
         ) : null}
       </section>
