@@ -290,7 +290,7 @@ export default function DeskBoard() {
     return meta.tickers;
   }, [tapeBook, meta.tickers]);
 
-  /** Prefer live portfolio fetch; fall back to desk-day rhActivity */
+  /** Always show every Agentic holding up top (never hide behind book tabs). */
   const heldPositions = useMemo(() => {
     const fromLive = livePositions;
     const fromDesk = desk?.state?.rhActivity?.positions || [];
@@ -305,11 +305,10 @@ export default function DeskBoard() {
       });
     }
     for (const p of fromLive) merged.set(p.symbol, p);
-    const all = [...merged.values()];
-    if (!book || book === "all") return all;
-    const set = new Set(bookSymbols.map((s) => s.toUpperCase()));
-    return all.filter((p) => set.has(p.symbol));
-  }, [livePositions, desk, book, bookSymbols]);
+    return [...merged.values()].sort(
+      (a, b) => Math.abs(b.marketValue || 0) - Math.abs(a.marketValue || 0)
+    );
+  }, [livePositions, desk]);
 
   const sodSteps = useMemo(
     () =>
@@ -440,11 +439,8 @@ export default function DeskBoard() {
           </div>
         ) : heldPositions.length === 0 ? (
           <div className="glass rounded-3xl border border-dashed border-[var(--line)] p-5 text-sm text-[var(--ink-soft)]">
-            No live equity positions
-            {book && book !== "all" ? ` in ${meta.name}` : ""} right now.
-            {livePositions.length > 0
-              ? " Holdings exist in other books — switch to All."
-              : " Place in Robinhood or Approve live, then Refresh positions."}
+            No live Agentic equity positions right now. Place in Robinhood or Approve live, then
+            Refresh positions.
           </div>
         ) : (
           <div className="grid gap-3">
