@@ -64,7 +64,7 @@ export default function IndustryGrid() {
           );
         }
         return (
-          <div key={ind.id} className="h-full opacity-85" aria-disabled>
+          <div key={ind.id} className="h-full opacity-85" aria-disabled="true">
             {inner}
           </div>
         );

@@ -10,48 +10,61 @@ export type Industry = {
   focus: string;
 };
 
-/** Six industry books — AI is live; the rest preview until packs ship. */
+/** Industry books — wired to Swarm desk-day / Robinhood tape. */
 export const INDUSTRIES: Industry[] = [
   {
     id: "ai",
     name: "AI Trade",
     tagline: "Semis, power, software — the agentic AI book.",
     status: "live",
-    href: "/ai",
-    tickers: ["NVDA", "AVGO", "MSFT", "TSM", "VST", "ANET"],
-    focus: "Thesis → size → Execute on Robinhood Agentic",
+    href: "/desk?book=ai",
+    tickers: ["NVDA", "AVGO", "MSFT", "VST", "AMD", "SMCI"],
+    focus: "Analyze → Rank → Approve on Robinhood Agentic",
+  },
+  {
+    id: "crypto",
+    name: "Crypto",
+    tagline: "Spot proxies and miners on the same Agentic rail.",
+    status: "live",
+    href: "/desk?book=crypto",
+    tickers: ["IBIT", "ETHA", "COIN", "MARA"],
+    focus: "Thesis sleeves + fluid ranking",
   },
   {
     id: "banking",
     name: "Banking",
     tagline: "Rates, credit, and money-center names.",
-    status: "preview",
-    tickers: ["JPM", "BAC", "GS", "MS"],
-    focus: "Coming next — hedge sleeve vs risk-on books",
+    status: "live",
+    href: "/desk?book=banking",
+    tickers: ["JPM", "BAC", "GS", "MS", "WFC", "C"],
+    focus: "Hedge sleeve vs risk-on books",
   },
   {
     id: "agriculture",
     name: "Agriculture",
     tagline: "Inputs, protein, and soft commodities.",
-    status: "preview",
-    tickers: ["DE", "ADM", "CTVA"],
-    focus: "Coming next — seasonal + macro pack",
+    status: "live",
+    href: "/desk?book=agriculture",
+    tickers: ["ADM", "DE", "CTVA", "BG", "MOS", "TSN"],
+    focus: "Seasonal + macro pack",
   },
   {
     id: "hospitality",
     name: "Hospitality",
     tagline: "Hotels, travel, and leisure demand.",
-    status: "preview",
-    tickers: ["MAR", "HLT", "BKNG"],
-    focus: "Coming next — consumer travel sleeve",
+    status: "live",
+    href: "/desk?book=hospitality",
+    tickers: ["MAR", "HLT", "BKNG", "DAL", "ABNB", "RCL"],
+    focus: "Consumer travel sleeve",
   },
   {
     id: "restaurants",
     name: "Restaurants",
     tagline: "QSR to fine dining operators.",
-    status: "preview",
-    tickers: ["MCD", "SBUX", "CMG"],
-    focus: "Coming next — traffic & margin angles",
+    status: "live",
+    href: "/desk?book=restaurants",
+    tickers: ["MCD", "SBUX", "CMG", "YUM", "DPZ", "WING"],
+    focus: "Traffic & margin angles on Robinhood tape",
   },
   {
     id: "gig",
@@ -63,8 +76,18 @@ export const INDUSTRIES: Industry[] = [
   },
 ];
 
+export const DESK_BOOKS = [
+  { id: "all", label: "All" },
+  { id: "ai", label: "AI Trade" },
+  { id: "crypto", label: "Crypto" },
+  { id: "banking", label: "Banking" },
+  { id: "agriculture", label: "Agriculture" },
+  { id: "hospitality", label: "Hospitality" },
+  { id: "restaurants", label: "Restaurants" },
+] as const;
+
 export const BRAND = {
   name: "Industry Desk",
   product: "Industry Desk",
-  blurb: "Connect Robinhood. Pick an industry. Let an agent watch the book.",
+  blurb: "Connect Robinhood once on Swarm. Pick an industry. Let an agent watch the book.",
 };
