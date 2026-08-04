@@ -50,6 +50,15 @@ export async function GET(req: NextRequest) {
       const res = await railwayAuthed("/api/ceo/trader");
       return asJson(res);
     }
+    if (action === "desk-newsletter") {
+      const list = req.nextUrl.searchParams.get("list");
+      const path =
+        list === "1" || list === "true"
+          ? `/api/ceo/desk-newsletter?list=1&limit=${encodeURIComponent(req.nextUrl.searchParams.get("limit") || "14")}`
+          : "/api/ceo/desk-newsletter";
+      const res = await railwayAuthed(path);
+      return asJson(res);
+    }
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (err) {
     return NextResponse.json(
@@ -72,9 +81,11 @@ export async function POST(req: NextRequest) {
             ? "/api/ceo/trade-book"
             : action === "desk-day"
               ? "/api/ceo/desk-day"
-              : action === "trader-run"
-                ? "/api/ceo/trader/run"
-                : "/api/ceo/arm-plan";
+              : action === "desk-newsletter"
+                ? "/api/ceo/desk-newsletter"
+                : action === "trader-run"
+                  ? "/api/ceo/trader/run"
+                  : "/api/ceo/arm-plan";
     const res = await railwayAuthed(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
