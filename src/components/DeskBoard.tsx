@@ -33,6 +33,7 @@ import LivePositionsRail, {
 } from "@/components/LivePositionsRail";
 import DeskBrief from "@/components/DeskBrief";
 import StagingRail from "@/components/StagingRail";
+import AgentPushFeed from "@/components/AgentPushFeed";
 import { robinhoodStockUrl } from "@/components/RhChartPanel";
 
 type SodStep = { title: string; detail: string; ready: boolean };
@@ -697,6 +698,12 @@ export default function DeskBoard() {
             toast.error("Protect failed", { description: (e as Error).message });
           }
         }}
+      />
+
+      <AgentPushFeed
+        latest={desk?.agentAlerts?.latest}
+        recent={desk?.agentAlerts?.recent}
+        openAnxiety={desk?.agentAlerts?.openAnxiety}
       />
 
       <DeskBrief
