@@ -34,6 +34,7 @@ import LivePositionsRail, {
 import DeskBrief from "@/components/DeskBrief";
 import StagingRail from "@/components/StagingRail";
 import AgentPushFeed from "@/components/AgentPushFeed";
+import MissionControl from "@/components/MissionControl";
 import { robinhoodStockUrl } from "@/components/RhChartPanel";
 
 type SodStep = { title: string; detail: string; ready: boolean };
@@ -237,6 +238,16 @@ export default function DeskBoard() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Morning window / RTH: keep mission control honest — poll desk every 30s.
+  useEffect(() => {
+    const hot = Boolean(desk?.et?.isMorningPlanWindow || desk?.et?.isRth || desk?.refreshing);
+    if (!hot) return;
+    const iv = window.setInterval(() => {
+      void load();
+    }, 30_000);
+    return () => window.clearInterval(iv);
+  }, [load, desk?.et?.isMorningPlanWindow, desk?.et?.isRth, desk?.refreshing]);
 
   // Light tape fetch when the book tab changes — do not re-run full desk load.
   useEffect(() => {
@@ -461,7 +472,7 @@ export default function DeskBoard() {
           {core ? (
             <>
               {" "}
-              — analyzing {core}
+              — {core}
               {tang ? ` + ${tang}` : ""} on Robinhood tape.
             </>
           ) : null}
@@ -469,34 +480,15 @@ export default function DeskBoard() {
         {meta.tagline ? (
           <p className="mt-1 text-sm text-[var(--ink-soft)]">{meta.tagline}</p>
         ) : null}
-        {desk?.dayGoal ? (
-          <p className="mt-2 text-sm text-[var(--ink-soft)]">
-            Day band{" "}
-            <span className="mono font-medium text-[var(--ink)]">
-              {Math.round((desk.dayGoal.min || 0.01) * 100)}–
-              {Math.round((desk.dayGoal.stretch || 0.03) * 100)}%
-            </span>
-            {desk.dayPnlPctEst != null ? (
-              <>
-                {" "}
-                · book now{" "}
-                <span className="mono font-semibold text-[var(--ink)]">
-                  {fmtPct(desk.dayPnlPctEst * 100)}
-                </span>
-              </>
-            ) : null}
-            {desk.dayPeakPnlPct != null ? (
-              <>
-                {" "}
-                · peak{" "}
-                <span className="mono font-semibold text-[var(--ink)]">
-                  {fmtPct(desk.dayPeakPnlPct * 100)}
-                </span>
-              </>
-            ) : null}
-          </p>
-        ) : null}
       </motion.div>
+
+      <MissionControl
+        desk={desk}
+        positions={heldPositions}
+        buyingPower={buyingPower}
+        busy={busy}
+        onAnalyzeNow={onRefresh}
+      />
 
       {desk?.bankMode || desk?.dayGoalHit ? (
         <div className="mb-6 rounded-3xl border border-amber-300 bg-amber-50/90 px-4 py-3 text-sm text-amber-950">
