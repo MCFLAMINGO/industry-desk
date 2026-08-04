@@ -4,7 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Activity, Loader2, RefreshCw } from "lucide-react";
 import clsx from "clsx";
 import { toast } from "sonner";
-import { fetchOpenBook, fmtPct, fmtUsd, planFillTruth, type DeskPlan } from "@/lib/desk";
+import {
+  fetchOpenBook,
+  fmtPct,
+  planFillTruth,
+  runPlanPhase,
+  type DeskPlan,
+} from "@/lib/desk";
 
 const PHASES = ["wait", "open", "monitor", "add", "close"] as const;
 
@@ -68,7 +74,15 @@ function phaseIndex(plan: DeskPlan) {
   return 1;
 }
 
-function PlayCard({ plan }: { plan: DeskPlan }) {
+function PlayCard({
+  plan,
+  busyPhase,
+  onPhase,
+}: {
+  plan: DeskPlan;
+  busyPhase: string | null;
+  onPhase: (planId: string, phase: string) => void;
+}) {
   const levels = plan.levels || {};
   const entry = num(levels.entry) ?? num(plan.last_mark);
   const stop = num(levels.stop);
@@ -115,6 +129,7 @@ function PlayCard({ plan }: { plan: DeskPlan }) {
         : pnl >= 0
           ? "text-[var(--ok)]"
           : "text-[var(--danger)]";
+  const doneOrCancelled = plan.status === "completed" || plan.status === "cancelled";
 
   return (
     <article className="glass rounded-3xl p-4 sm:p-5 space-y-3">
@@ -218,21 +233,38 @@ function PlayCard({ plan }: { plan: DeskPlan }) {
           const step = plan.steps?.find((s) => s.phase === phase);
           const done = step?.status === "done" || step?.status === "dry_run_done";
           const active = i === activePhase;
+          const busy = busyPhase === `${plan.id}:${phase}`;
           return (
-            <li
-              key={phase}
-              className={clsx(
-                "rounded-xl border px-1 py-1.5 text-center text-[11px] capitalize",
-                active && "border-[var(--teal)] bg-[rgba(20,184,166,0.12)] font-semibold text-[var(--teal-deep)]",
-                !active && done && "border-emerald-200 bg-emerald-50 text-emerald-800",
-                !active && !done && "border-[var(--line)] bg-white/50 text-[var(--ink-soft)]"
-              )}
-            >
-              {phase}
+            <li key={phase}>
+              <button
+                type="button"
+                disabled={doneOrCancelled || busy}
+                title={
+                  phase === "open" && !hasPosition
+                    ? "Retry / force open (short = long put on Agentic)"
+                    : phase === "close" && !hasPosition
+                      ? "No fill — cancels this armed plan"
+                      : `Run ${phase} now`
+                }
+                onClick={() => onPhase(plan.id, phase)}
+                className={clsx(
+                  "w-full rounded-xl border px-1 py-1.5 text-center text-[11px] capitalize transition-colors",
+                  "hover:border-[var(--teal)] hover:text-[var(--teal-deep)] disabled:cursor-not-allowed disabled:opacity-50",
+                  active && "border-[var(--teal)] bg-[rgba(20,184,166,0.12)] font-semibold text-[var(--teal-deep)]",
+                  !active && done && "border-emerald-200 bg-emerald-50 text-emerald-800",
+                  !active && !done && "border-[var(--line)] bg-white/50 text-[var(--ink-soft)]",
+                  busy && "animate-pulse"
+                )}
+              >
+                {busy ? "…" : phase}
+              </button>
             </li>
           );
         })}
       </ol>
+      <p className="text-[11px] text-[var(--ink-soft)]">
+        Tap a phase to act — wait/monitor ticks; open retries fill; add sizes in; close exits (or cancels if no fill).
+      </p>
 
       {latest ? (
         <p className="text-xs text-[var(--ink-soft)]">
@@ -261,6 +293,7 @@ export default function PlayByPlayRail({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [busyPhase, setBusyPhase] = useState<string | null>(null);
 
   const load = useCallback(async (opts?: { manual?: boolean; quiet?: boolean }) => {
     const manual = Boolean(opts?.manual);
@@ -313,6 +346,40 @@ export default function PlayByPlayRail({
 
   const spinning = loading || refreshing;
 
+  const handlePhase = useCallback(
+    async (planId: string, phase: string) => {
+      const key = `${planId}:${phase}`;
+      setBusyPhase(key);
+      try {
+        const out = await runPlanPhase(planId, phase);
+        if (out.error) throw new Error(out.error);
+        if (out.plan) {
+          setPlans((prev) => {
+            const next = prev.map((p) => (p.id === planId ? (out.plan as DeskPlan) : p));
+            if (!next.some((p) => p.id === planId) && out.plan) next.unshift(out.plan as DeskPlan);
+            return next;
+          });
+        } else {
+          await load({ quiet: true });
+        }
+        const action = out.actions?.[0]?.type || phase;
+        const detail = out.detail || out.actions?.[0]?.result || out.plan?.status || "ok";
+        if (action === "cancelled_no_fill" || action === "cancelled_unsupported_no_fill") {
+          toast.message("Plan cancelled", { description: String(detail) });
+        } else if (String(detail).includes("EQUITY_SHORT") || String(detail).includes("UNSUPPORTED")) {
+          toast.error(`${phase} blocked`, { description: String(detail) });
+        } else {
+          toast.success(`${phase} · ${action}`, { description: String(detail).slice(0, 160) });
+        }
+      } catch (e) {
+        toast.error(`${phase} failed`, { description: (e as Error).message });
+      } finally {
+        setBusyPhase(null);
+      }
+    },
+    [load]
+  );
+
   return (
     <section className="mb-8">
       <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
@@ -349,7 +416,9 @@ export default function PlayByPlayRail({
             Approve live and this rail lights up.
           </div>
         ) : (
-          active.map((p) => <PlayCard key={p.id} plan={p} />)
+          active.map((p) => (
+            <PlayCard key={p.id} plan={p} busyPhase={busyPhase} onPhase={handlePhase} />
+          ))
         )}
       </div>
 
