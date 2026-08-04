@@ -813,6 +813,7 @@ export default function DeskBoard() {
         latest={desk?.agentAlerts?.latest}
         recent={desk?.agentAlerts?.recent}
         openAnxiety={desk?.agentAlerts?.openAnxiety}
+        dayPatterns={desk?.agentAlerts?.dayPatterns}
       />
 
       <DeskBrief
