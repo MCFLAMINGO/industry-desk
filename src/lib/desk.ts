@@ -235,6 +235,43 @@ export function planFillTruth(plan: DeskPlan): {
   return { kind: "unknown", label: "No fill yet", orderState: state };
 }
 
+export type DeskHint = {
+  id?: string;
+  status?: "seen" | "watching" | "confirmed" | "strategy_ready" | string;
+  symbol?: string | null;
+  industry?: string | null;
+  label?: string;
+  watchFor?: string | null;
+  largerMove?: string | null;
+  horizonHint?: string;
+  weekHits?: number;
+  monthHits?: number;
+  lastAt?: string;
+};
+
+export type DeskNewsletter = {
+  id?: string;
+  kind?: string;
+  dateKey?: string;
+  dateLabel?: string;
+  at?: string;
+  subject?: string;
+  source?: string;
+  sections?: {
+    yesterday?: string;
+    today?: string;
+    tomorrow?: string;
+    future?: string;
+    closing?: string;
+  };
+  email?: {
+    sent?: boolean;
+    to?: string | null;
+    id?: string | null;
+    error?: string | null;
+  };
+};
+
 export type DeskDayState = {
   ok?: boolean;
   error?: string;
@@ -248,9 +285,47 @@ export type DeskDayState = {
     isAfterClose?: boolean;
   };
   dayGoal?: { min?: number; stretch?: number };
+  dayPnlPctEst?: number | null;
+  dayPeakPnlPct?: number | null;
+  dayGoalHit?: boolean;
+  bankMode?: boolean;
+  /** Latest NIM fusion entry decision (not a tape scoreboard). */
+  lastDecision?: {
+    action?: string;
+    symbol?: string | null;
+    why?: string;
+    horizon?: string;
+    instrument?: string | null;
+    confidence?: number;
+    kill?: string[];
+    hints?: Array<{
+      label?: string;
+      symbol?: string | null;
+      industry?: string | null;
+      watchFor?: string | null;
+      largerMove?: string | null;
+      horizon?: string;
+    }>;
+    source?: string;
+    contextBytes?: number;
+    duration_ms?: number;
+  } | null;
+  /** Multi-session hint memory: see → watch → week/month repeat → larger move. */
+  hintMemory?: {
+    note?: string;
+    total?: number;
+    watching?: number;
+    confirmed?: number;
+    strategyReady?: number;
+    watchingList?: DeskHint[];
+    confirmedList?: DeskHint[];
+    strategyReadyList?: DeskHint[];
+  } | null;
+  /** Latest account-owner daily letter (yesterday→today→tomorrow→future). */
+  newsletter?: DeskNewsletter | null;
   autoExecute?: boolean;
   autoLive?: boolean;
-  fiduciary?: { note?: string; maxLive?: number };
+  fiduciary?: { note?: string; maxLive?: number; entry?: string };
   universe?: {
     size?: number;
     books?: Array<{
