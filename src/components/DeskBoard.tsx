@@ -278,20 +278,24 @@ export default function DeskBoard() {
   async function onRefresh() {
     setBusy(true);
     try {
-      await runDeskPass(false);
-      const [{ desk: next, at }, pos] = await Promise.all([
-        load(),
-        loadPositions({ quiet: true }),
-      ]);
+      // Async on Railway — returns when fusion finishes (or times out gracefully).
+      const refreshed = await runDeskPass(false);
+      setDesk(refreshed);
+      const at = new Date().toISOString();
+      setDeskUpdatedAt(at);
+      setLoadError(null);
+      const pos = await loadPositions({ quiet: true });
       setPlayRefreshToken((n) => n + 1);
-      const rows = next?.state?.rankings || [];
+      const rows = refreshed?.state?.rankings || [];
       const forBook =
         !book || book === "all" ? rows : rows.filter((r) => r.industryId === book);
-      const session = next?.et?.isRth ? "RTH open" : "session closed";
+      const session = refreshed?.et?.isRth ? "RTH open" : "session closed";
       const lead = forBook[0]?.symbol;
       const heldN = pos && "positions" in pos ? pos.positions.length : livePositions.length;
-      toast.success("Desk refreshed", {
+      const stillRunning = refreshed?.refreshing === true;
+      toast.success(stillRunning ? "Desk refresh running" : "Desk refreshed", {
         description: [
+          stillRunning ? "fusion still working — board will catch up" : null,
           `${forBook.length} ranked play${forBook.length === 1 ? "" : "s"}`,
           lead ? `lead ${lead}` : null,
           `${heldN} RH position${heldN === 1 ? "" : "s"}`,

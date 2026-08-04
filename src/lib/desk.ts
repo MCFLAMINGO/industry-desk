@@ -324,6 +324,10 @@ export type DeskDayState = {
   } | null;
   /** Latest account-owner daily letter (yesterday→today→tomorrow→future). */
   newsletter?: DeskNewsletter | null;
+  /** True while a desk-day pass (fusion) is running server-side. */
+  refreshing?: boolean;
+  refreshStartedAt?: string | null;
+  accepted?: boolean;
   autoExecute?: boolean;
   autoLive?: boolean;
   fiduciary?: { note?: string; maxLive?: number; entry?: string };
@@ -339,6 +343,7 @@ export type DeskDayState = {
   state?: {
     note?: string;
     phase?: string;
+    updatedAt?: string;
     rankings?: DeskRank[];
     synthesis?: DeskSynthesis | null;
     /** Live Agentic equity holdings — includes manual/app fills */
@@ -425,9 +430,31 @@ async function readJson(res: Response): Promise<Record<string, unknown>> {
   }
 }
 
-export async function fetchDeskDay(): Promise<DeskDayState> {
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function fetchDeskDayOnce(): Promise<DeskDayState> {
   const res = await fetch("/api/ceo?action=desk-day", { cache: "no-store" });
-  return (await readJson(res)) as DeskDayState;
+  const data = await readJson(res);
+  if (data.ok === false || (res.status >= 400 && data.error)) {
+    throw new Error(String(data.error || `Desk day failed (${res.status})`));
+  }
+  return data as DeskDayState;
+}
+
+export async function fetchDeskDay(): Promise<DeskDayState> {
+  try {
+    return await fetchDeskDayOnce();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // One retry — empty/platform 500s are usually transient proxy kills.
+    if (/empty response|timed out|504|502|500/i.test(msg)) {
+      await sleep(600);
+      return fetchDeskDayOnce();
+    }
+    throw err;
+  }
 }
 
 export async function fetchIndustryTape(book?: string | null): Promise<IndustryTape> {
@@ -462,7 +489,12 @@ export async function runPlanPhase(planId: string, phase: string) {
   }>;
 }
 
-export async function runDeskPass(live = false) {
+/**
+ * Kick a desk-day pass. Railway runs fusion async by default so the Vercel
+ * proxy never sits on a 30s+ response (which produced empty 500s).
+ * Polls until `state.updatedAt` moves or `refreshing` clears.
+ */
+export async function runDeskPass(live = false): Promise<DeskDayState> {
   const res = await fetch("/api/ceo", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -471,9 +503,39 @@ export async function runDeskPass(live = false) {
       reason: "manual",
       live,
       confirm: live,
+      // Explicit: never ask the proxy to wait on NIM fusion.
+      wait: false,
     }),
   });
-  return readJson(res);
+  const started = (await readJson(res)) as DeskDayState;
+  if (started.ok === false && started.error) {
+    throw new Error(String(started.error));
+  }
+  const prevUpdated = started.state?.updatedAt || null;
+  if (!started.refreshing && !started.accepted) {
+    return started;
+  }
+  for (let i = 0; i < 45; i++) {
+    await sleep(1500);
+    try {
+      const next = await fetchDeskDayOnce();
+      const moved =
+        next.state?.updatedAt &&
+        prevUpdated &&
+        next.state.updatedAt !== prevUpdated;
+      if (moved || next.refreshing === false) {
+        return next;
+      }
+    } catch {
+      /* keep polling — pass may still be running */
+    }
+  }
+  // Return best-effort snapshot even if fusion is still chewing.
+  try {
+    return await fetchDeskDayOnce();
+  } catch {
+    return started;
+  }
 }
 
 export async function armDeskPlay(input: {
