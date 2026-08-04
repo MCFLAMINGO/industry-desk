@@ -365,6 +365,27 @@ export async function fetchOpenBook(): Promise<{ ok?: boolean; plans?: DeskPlan[
   return (await readJson(res)) as { ok?: boolean; plans?: DeskPlan[]; error?: string };
 }
 
+/** Operator play-by-play: wait | open | monitor | add | close */
+export async function runPlanPhase(planId: string, phase: string) {
+  const res = await fetch("/api/ceo", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "tick-plan",
+      planId,
+      phase,
+    }),
+  });
+  return readJson(res) as Promise<{
+    ok?: boolean;
+    error?: string;
+    phase?: string;
+    detail?: string;
+    actions?: Array<{ type?: string; result?: string }>;
+    plan?: DeskPlan;
+  }>;
+}
+
 export async function runDeskPass(live = false) {
   const res = await fetch("/api/ceo", {
     method: "POST",
