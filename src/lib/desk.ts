@@ -344,6 +344,7 @@ export type DeskRegime = {
   at?: string;
   stance?:
     | "stay_aboard"
+    | "watch"
     | "leave_boat"
     | "building_new_boat"
     | "dip_buy_options"
@@ -351,6 +352,9 @@ export type DeskRegime = {
     | string;
   confidence?: number;
   plain?: string;
+  /** False when only headlines fired — agents must not act on chatter. */
+  corroborated?: boolean;
+  witnessKinds?: string[];
   topPlaybook?: {
     id?: string;
     name?: string;
@@ -422,6 +426,14 @@ export type DeskDayState = {
   dayGoalHit?: boolean;
   bankMode?: boolean;
   /** Latest NIM fusion entry decision (not a tape scoreboard). */
+  lastDecisionAt?: string | null;
+  /** Why this pass produced no NEW call (slot held, max live, auto off…). */
+  lastSkip?: {
+    at?: string;
+    reason?: string;
+    detail?: string | null;
+    slot?: string | null;
+  } | null;
   lastDecision?: {
     action?: string;
     symbol?: string | null;

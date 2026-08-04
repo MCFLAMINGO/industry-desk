@@ -26,17 +26,19 @@ type Props = {
 function stanceLabel(stance?: string | null) {
   switch (stance) {
     case "leave_boat":
-      return "Leave the boat";
+      return "Reducing risk";
     case "building_new_boat":
-      return "Building the next boat";
+      return "Building the next book";
     case "dip_buy_options":
-      return "Dip-buy with long options";
+      return "Buying the dip with options";
+    case "watch":
+      return "Watching (unconfirmed)";
     case "mixed":
       return "Mixed signals";
     case "stay_aboard":
-      return "Stay aboard";
+      return "Normal — on process";
     default:
-      return "No regime read yet";
+      return "No read yet";
   }
 }
 
@@ -95,6 +97,32 @@ function sessionPlain(et: DeskDayState["et"], refreshing?: boolean) {
   };
 }
 
+function skipPlain(reason?: string) {
+  if (!reason) return null;
+  if (reason.startsWith("slot_")) {
+    return "The capital slot is already holding the best idea — agents manage it instead of buying another name.";
+  }
+  switch (reason) {
+    case "propose_only":
+      return "Auto-execute is off, so agents propose only. Approve from Staging to act.";
+    case "max_live":
+      return "Max live plans reached — agents will not stack another position.";
+    case "bank_mode":
+      return "Bank mode: the day band was hit or rolled, so no new risk.";
+    case "risk_off":
+      return "Risk-off latch is on — protect and flatten only.";
+    case "robinhood_required":
+    case "live_trading_disabled":
+      return "Robinhood gate blocked the arm path (connection or live-trading flag).";
+    case "engine_outage":
+      return "The reasoning engine failed this pass — no decision was made.";
+    case "already_held":
+      return "The name is already held — agents should protect it, not re-buy it.";
+    default:
+      return `Arm path skipped: ${reason.replace(/_/g, " ")}.`;
+  }
+}
+
 function fusionPlain(desk: DeskDayState | null) {
   const ld = desk?.lastDecision;
   if (desk?.refreshing) {
@@ -105,10 +133,15 @@ function fusionPlain(desk: DeskDayState | null) {
     };
   }
   if (!ld) {
+    const skip = desk?.lastSkip;
     return {
-      status: "No decision yet",
-      line: "Hit Analyze for open — until then agents have no fresh fusion call.",
-      ok: false,
+      status: skip ? "No new call this pass" : "No decision yet",
+      line:
+        skipPlain(skip?.reason)
+        || skip?.slot
+        || skip?.detail
+        || "Hit Analyze for open — until then agents have no fresh fusion call.",
+      ok: Boolean(skip && skip.reason !== "engine_outage"),
     };
   }
   if (ld.source === "nim_error" || ld.source === "nim_unavailable") {
@@ -203,6 +236,7 @@ export default function MissionControl({
   const [regimeBusy, setRegimeBusy] = useState(false);
   const [riskBusy, setRiskBusy] = useState(false);
   const [localRegime, setLocalRegime] = useState<DeskRegime | null>(null);
+  const [showRegimeDetail, setShowRegimeDetail] = useState(false);
   useEffect(() => {
     const iv = window.setInterval(() => setNowTick((n) => n + 1), 15_000);
     return () => window.clearInterval(iv);
@@ -216,10 +250,12 @@ export default function MissionControl({
   const openLine = atOpenPlain(desk, bookPnlPct);
   const regime = localRegime || desk?.regime || null;
   const pastHits = regime?.historicalNews?.hits || [];
-  const hotStance =
-    regime?.stance === "leave_boat"
-    || regime?.stance === "building_new_boat"
-    || regime?.stance === "dip_buy_options";
+  // Only an actually-corroborated stance should colour the UI as urgent.
+  const actionableStance =
+    regime?.corroborated !== false
+    && (regime?.stance === "leave_boat"
+      || regime?.stance === "building_new_boat"
+      || regime?.stance === "dip_buy_options");
 
   const progress = bookPnlPct == null ? 0 : Math.max(0, Math.min(1.2, bookPnlPct / goalMin));
   const behind = bookPnlPct != null && bookPnlPct < goalMin * 0.25;
@@ -346,39 +382,46 @@ export default function MissionControl({
         </div>
       </div>
 
+      {/*
+        Regime internals (playbook rhymes, past-news scores) are AGENT inputs,
+        not something the account owner should have to read. Surface one line of
+        posture plus the controls; the evidence lives behind Details.
+      */}
       <div
         className={clsx(
-          "border-t border-[var(--line)] px-5 py-4",
-          hotStance ? "bg-amber-50/90" : "bg-white/60"
+          "border-t border-[var(--line)] px-5 py-3",
+          actionableStance ? "bg-amber-50/90" : "bg-white/60"
         )}
       >
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--teal-deep)]">
-              <Anchor className="h-3.5 w-3.5" /> Boat / regime core
-            </p>
-            <p
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="flex items-center gap-2 text-sm">
+            <Anchor className="h-3.5 w-3.5 shrink-0 text-[var(--teal-deep)]" />
+            <span className="font-semibold text-[var(--ink)]">Posture:</span>
+            <span
               className={clsx(
-                "mt-2 text-xl font-semibold",
+                "font-semibold",
                 regime?.stance === "leave_boat" && "text-[var(--danger)]",
                 regime?.stance === "building_new_boat" && "text-amber-800",
                 regime?.stance === "dip_buy_options" && "text-[var(--ok)]",
-                !hotStance && "text-[var(--ink)]"
+                !actionableStance && "text-[var(--ink-soft)]"
               )}
             >
               {stanceLabel(regime?.stance)}
-              {regime?.confidence != null ? (
-                <span className="ml-2 text-sm font-normal text-[var(--ink-soft)]">
-                  · conf {(regime.confidence * 100).toFixed(0)}%
-                </span>
-              ) : null}
-            </p>
-            <p className="mt-1 max-w-3xl text-sm leading-relaxed text-[var(--ink)]">
-              {regime?.plain
-                || "Agents continuously rhyme today’s wire to past news moments (carry 1998/2024, dot-com 1999–2000, GFC 2007–2008). Hit Scan past news when you want a fresh read."}
-            </p>
-          </div>
+            </span>
+            {regime?.stance === "watch" || regime?.corroborated === false ? (
+              <span className="text-xs text-[var(--ink-soft)]">
+                (headlines only — not confirmed by the tape, so agents are not cutting risk)
+              </span>
+            ) : null}
+          </p>
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setShowRegimeDetail((v) => !v)}
+              className="rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--ink-soft)]"
+            >
+              {showRegimeDetail ? "Hide details" : "Details"}
+            </button>
             <button
               type="button"
               disabled={regimeBusy}
@@ -395,14 +438,14 @@ export default function MissionControl({
               className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--ink)] disabled:opacity-50"
             >
               <Radio className={clsx("h-3.5 w-3.5", regimeBusy && "animate-pulse")} />
-              {regimeBusy ? "Scanning past news…" : "Scan past news"}
+              {regimeBusy ? "Re-checking…" : "Re-check"}
             </button>
             <button
               type="button"
               disabled={riskBusy}
               onClick={() => {
                 if (!window.confirm(
-                  "RISK OFF: close/protect day longs and flatten option shorts (put hedges may still be managed as shorts if marked). Continue?"
+                  "RISK OFF: close/protect day longs and flatten option shorts. Continue?"
                 )) return;
                 setRiskBusy(true);
                 void runDeskRiskOff({
@@ -419,32 +462,31 @@ export default function MissionControl({
           </div>
         </div>
 
-        {regime?.topPlaybook?.name ? (
-          <p className="mt-3 text-xs text-[var(--ink-soft)]">
-            Top rhyme: {regime.topPlaybook.name}
-            {regime.topPlaybook.analogs?.[0] ? ` · analog ${regime.topPlaybook.analogs[0]}` : ""}
-            {regime.witnesses?.pastNewsHits != null
-              ? ` · ${regime.witnesses.pastNewsHits} past-news hits`
-              : ""}
-          </p>
-        ) : null}
-
-        {pastHits.length > 0 ? (
-          <div className="mt-3 grid gap-2 md:grid-cols-2">
-            {pastHits.slice(0, 4).map((h) => (
-              <div
-                key={h.id || h.label}
-                className="rounded-2xl border border-[var(--line)] bg-white/80 px-3 py-2"
-              >
-                <p className="text-xs font-semibold text-[var(--ink)]">
-                  {h.era} · {h.phase} · {(h.score != null ? h.score * 100 : 0).toFixed(0)}%
-                </p>
-                <p className="mt-0.5 text-sm text-[var(--ink)]">{h.label}</p>
-                <p className="mt-1 text-xs leading-relaxed text-[var(--ink-soft)]">
-                  {h.modernRhyme || h.exemplars?.[0]}
-                </p>
-              </div>
-            ))}
+        {showRegimeDetail ? (
+          <div className="mt-3 rounded-2xl border border-[var(--line)] bg-white/80 px-3 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--ink-soft)]">
+              Agent inputs — historical rhyme evidence
+            </p>
+            <p className="mt-1.5 text-sm leading-relaxed text-[var(--ink)]">
+              {regime?.plain || "No regime read recorded yet."}
+            </p>
+            {regime?.topPlaybook?.name ? (
+              <p className="mt-2 text-xs text-[var(--ink-soft)]">
+                Top rhyme: {regime.topPlaybook.name}
+                {regime.topPlaybook.analogs?.[0] ? ` · analog ${regime.topPlaybook.analogs[0]}` : ""}
+                {regime.witnessKinds?.length ? ` · witnesses ${regime.witnessKinds.join(", ")}` : ""}
+              </p>
+            ) : null}
+            {pastHits.length > 0 ? (
+              <ul className="mt-2 space-y-1 text-xs text-[var(--ink-soft)]">
+                {pastHits.slice(0, 4).map((h) => (
+                  <li key={h.id || h.label}>
+                    <span className="mono">{h.era}</span> · {h.phase} ·{" "}
+                    {(h.score != null ? h.score * 100 : 0).toFixed(0)}% — {h.label}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </div>
         ) : null}
 
