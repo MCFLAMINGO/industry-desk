@@ -285,6 +285,7 @@ export type DeskDayState = {
     isAfterClose?: boolean;
   };
   dayGoal?: { min?: number; stretch?: number };
+  /** Fraction, e.g. 0.0119 = +1.19% book day estimate */
   dayPnlPctEst?: number | null;
   dayPeakPnlPct?: number | null;
   dayGoalHit?: boolean;

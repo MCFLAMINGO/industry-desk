@@ -377,7 +377,45 @@ export default function DeskBoard() {
         {meta.tagline ? (
           <p className="mt-1 text-sm text-[var(--ink-soft)]">{meta.tagline}</p>
         ) : null}
+        {desk?.dayGoal ? (
+          <p className="mt-2 text-sm text-[var(--ink-soft)]">
+            Day band{" "}
+            <span className="mono font-medium text-[var(--ink)]">
+              {Math.round((desk.dayGoal.min || 0.01) * 100)}–
+              {Math.round((desk.dayGoal.stretch || 0.03) * 100)}%
+            </span>
+            {desk.dayPnlPctEst != null ? (
+              <>
+                {" "}
+                · book now{" "}
+                <span className="mono font-semibold text-[var(--ink)]">
+                  {fmtPct(desk.dayPnlPctEst * 100)}
+                </span>
+              </>
+            ) : null}
+            {desk.dayPeakPnlPct != null ? (
+              <>
+                {" "}
+                · peak{" "}
+                <span className="mono font-semibold text-[var(--ink)]">
+                  {fmtPct(desk.dayPeakPnlPct * 100)}
+                </span>
+              </>
+            ) : null}
+          </p>
+        ) : null}
       </motion.div>
+
+      {desk?.bankMode || desk?.dayGoalHit ? (
+        <div className="mb-6 rounded-3xl border border-amber-300 bg-amber-50/90 px-4 py-3 text-sm text-amber-950">
+          <p className="font-semibold">BANK MODE — agents stop opening new nickels</p>
+          <p className="mt-1 text-amber-950/90">
+            Day goal was hit or peaked and rolled. Workers protect/trail existing Agentic holds
+            (you cannot sell except through agents). Refresh desk to attach Protect on any naked
+            inventory. Options puts are still a separate sleeve — not auto last-hour yet.
+          </p>
+        </div>
+      ) : null}
 
       {desk?.lastDecision ? (
         <div className="mb-6 rounded-3xl border border-[var(--line)] bg-white/70 px-4 py-3 text-sm text-[var(--ink)]">
