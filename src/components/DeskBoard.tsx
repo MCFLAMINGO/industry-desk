@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, startTransition } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { RefreshCw, ExternalLink } from "lucide-react";
@@ -117,10 +117,19 @@ function bookMeta(id: string | null) {
   };
 }
 
+function bookFromSearch(sp: URLSearchParams | { get(name: string): string | null }) {
+  const raw = sp.get("book");
+  if (!raw) return "all";
+  const id = String(raw).toLowerCase();
+  if (id === "all") return "all";
+  if (DESK_BOOKS.some((b) => b.id === id)) return id;
+  return "all";
+}
+
 export default function DeskBoard() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const book = searchParams.get("book") || "restaurants";
+  // Local book state = instant tab highlight. URL sync must not remount / block clicks.
+  const [book, setBookState] = useState(() => bookFromSearch(searchParams));
   const meta = bookMeta(book === "all" ? "all" : book);
 
   const [desk, setDesk] = useState<DeskDayState | null>(null);
@@ -137,6 +146,20 @@ export default function DeskBoard() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [deskUpdatedAt, setDeskUpdatedAt] = useState<string | null>(null);
   const [playRefreshToken, setPlayRefreshToken] = useState(0);
+
+  // Keep local book in sync if the user hits back/forward or deep-links.
+  useEffect(() => {
+    const fromUrl = bookFromSearch(searchParams);
+    setBookState((prev) => (prev === fromUrl ? prev : fromUrl));
+  }, [searchParams]);
+
+  useEffect(() => {
+    function onPop() {
+      setBookState(bookFromSearch(new URLSearchParams(window.location.search)));
+    }
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   const loadPositions = useCallback(async (opts?: { quiet?: boolean }) => {
     if (!opts?.quiet) setPositionsLoading(true);
@@ -162,16 +185,15 @@ export default function DeskBoard() {
     }
   }, []);
 
+  /** Heavy desk snapshot — independent of which book tab is active. */
   const load = useCallback(async () => {
     setLoadError(null);
     const errors: string[] = [];
-    const [d, t, p, s] = await Promise.allSettled([
+    const [d, p, s] = await Promise.allSettled([
       fetchDeskDay(),
-      fetchIndustryTape(book === "all" ? null : book),
       fetchOpenBook(),
       fetchRhStatus(),
     ]);
-    // Positions load in parallel path so the top rail always updates
     void loadPositions({ quiet: true });
 
     let nextDesk: DeskDayState | null = null;
@@ -181,9 +203,6 @@ export default function DeskBoard() {
     } else {
       errors.push(`Desk day: ${d.reason?.message || d.reason}`);
     }
-
-    if (t.status === "fulfilled") setTape(t.value);
-    else errors.push(`Tape: ${t.reason?.message || t.reason}`);
 
     if (p.status === "rejected") {
       errors.push(`Could not load open book — ${p.reason?.message || p.reason}`);
@@ -200,11 +219,28 @@ export default function DeskBoard() {
     const at = new Date().toISOString();
     setDeskUpdatedAt(at);
     return { desk: nextDesk, at };
-  }, [book, loadPositions]);
+  }, [loadPositions]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Light tape fetch when the book tab changes — do not re-run full desk load.
+  useEffect(() => {
+    let cancelled = false;
+    fetchIndustryTape(book === "all" ? null : book)
+      .then((t) => {
+        if (!cancelled) setTape(t);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.warn("[desk] tape:", err);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [book]);
 
   useEffect(() => {
     const iv = window.setInterval(
@@ -226,8 +262,17 @@ export default function DeskBoard() {
   const tang = tapeBook?.tangential?.join(", ") || meta.tickers.slice(3, 6).join(", ");
 
   function setBook(next: string) {
-    const q = next === "all" ? "/desk?book=all" : `/desk?book=${encodeURIComponent(next)}`;
-    router.push(q);
+    const id = bookFromSearch({ get: () => next });
+    // Instant UI — never wait on Next soft-nav / Suspense for searchParams.
+    setBookState(id);
+    const href = id === "all" ? "/desk?book=all" : `/desk?book=${encodeURIComponent(id)}`;
+    startTransition(() => {
+      try {
+        window.history.pushState(null, "", href);
+      } catch {
+        /* ignore */
+      }
+    });
   }
 
   async function onRefresh() {
@@ -552,23 +597,31 @@ export default function DeskBoard() {
         </div>
       ) : null}
 
-      <div className="mb-8 flex flex-wrap items-center gap-2">
+      <div className="relative z-20 mb-8 flex flex-wrap items-center gap-2">
         {DESK_BOOKS.map((b) => {
-          const active = (book || "all") === b.id;
+          const active = book === b.id;
+          const href = b.id === "all" ? "/desk?book=all" : `/desk?book=${encodeURIComponent(b.id)}`;
           return (
-            <button
+            <Link
               key={b.id}
-              type="button"
-              onClick={() => setBook(b.id)}
+              href={href}
+              scroll={false}
+              prefetch={false}
+              onClick={(e) => {
+                // Instant local switch — avoid Next soft-nav remounting Suspense on ?book=
+                e.preventDefault();
+                setBook(b.id);
+              }}
               className={clsx(
                 "rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors",
                 active
                   ? "bg-[var(--teal-deep)] text-[#f0fdfa]"
                   : "border border-[var(--line)] bg-white/60 text-[var(--ink-soft)] hover:text-[var(--teal-deep)]"
               )}
+              aria-current={active ? "page" : undefined}
             >
               {b.label}
-            </button>
+            </Link>
           );
         })}
         <button
