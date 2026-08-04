@@ -272,6 +272,40 @@ export type DeskNewsletter = {
   };
 };
 
+/** Agent → client push (Telegram/email + desk feed). */
+export type DeskAgentAlert = {
+  id?: string;
+  at?: string;
+  source?: string;
+  kind?: string;
+  plain?: string;
+  why?: string | null;
+  symbol?: string | null;
+  side?: string | null;
+  instrument?: string | null;
+  live?: boolean;
+  notional?: number | null;
+  targetPct?: number | null;
+  stopPct?: number | null;
+  planId?: string | null;
+  anxiety?: boolean;
+  ageMs?: number;
+  notified?: { telegram?: boolean; email?: boolean } | null;
+};
+
+export type DeskFocusAlert = {
+  id?: string;
+  at?: string;
+  plain?: string;
+  why?: string | null;
+  longBook?: string | null;
+  longSymbol?: string | null;
+  shortSymbol?: string | null;
+  targetPct?: number | null;
+  ageMs?: number;
+  note?: string;
+};
+
 export type DeskDayState = {
   ok?: boolean;
   error?: string;
@@ -324,6 +358,14 @@ export type DeskDayState = {
   } | null;
   /** Latest account-owner daily letter (yesterday→today→tomorrow→future). */
   newsletter?: DeskNewsletter | null;
+  /** Agent → you: recent pushes with why + anxiety on open risk. */
+  agentAlerts?: {
+    latest?: DeskAgentAlert | null;
+    openAnxiety?: DeskAgentAlert[];
+    recent?: DeskAgentAlert[];
+  } | null;
+  /** Optional operator focus note (secondary). */
+  focusAlert?: DeskFocusAlert | null;
   /** True while a desk-day pass (fusion) is running server-side. */
   refreshing?: boolean;
   refreshStartedAt?: string | null;
@@ -375,6 +417,17 @@ export type DeskDayState = {
       narrative?: string;
       proposeArm?: DeskRank | null;
       synthesis?: DeskSynthesis | null;
+      industryLead?: {
+        industryId?: string;
+        label?: string;
+        avgScore?: number;
+        changePct?: number | null;
+      } | null;
+      sleeves?: {
+        day?: DeskRank[];
+        week?: DeskRank[];
+        month?: DeskRank[];
+      };
     };
     industryTilt?: Array<{
       industryId: string;

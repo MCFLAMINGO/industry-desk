@@ -89,6 +89,13 @@ export async function GET(req: NextRequest) {
           : "/api/ceo/desk-newsletter";
       return await proxy(path, {}, GET_TIMEOUT_MS);
     }
+    if (action === "desk-alerts") {
+      return await proxy(
+        `/api/ceo/desk-alerts?limit=${encodeURIComponent(req.nextUrl.searchParams.get("limit") || "20")}`,
+        {},
+        GET_TIMEOUT_MS
+      );
+    }
     return NextResponse.json({ ok: false, error: "Unknown action" }, { status: 400 });
   } catch (err) {
     return fail(err);
