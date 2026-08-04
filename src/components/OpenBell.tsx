@@ -149,8 +149,9 @@ export default function OpenBell({
     || Boolean(desk?.et?.isMorningPlanWindow)
     || Boolean(brief?.isPreOpen);
   const isOpen = Boolean(desk?.et?.isRth) || (msLeft != null && msLeft <= 0);
-  const show = preOpen || isOpen || (brief?.holePct != null && brief.holePct > 0.2);
-  if (!show || !brief) return null;
+  // Always show when we have a book or a desk snapshot — never hide the plan quietly.
+  if (!brief && !positions.length && !desk) return null;
+  if (!brief) return null;
 
   const countdown = formatCountdown(msLeft);
   const underwater = (brief.bookPnlPct ?? 0) < (brief.goalPct ?? 1) * 0.25;
