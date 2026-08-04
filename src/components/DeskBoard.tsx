@@ -35,6 +35,7 @@ import DeskBrief from "@/components/DeskBrief";
 import StagingRail from "@/components/StagingRail";
 import AgentPushFeed from "@/components/AgentPushFeed";
 import MissionControl from "@/components/MissionControl";
+import OpenBell from "@/components/OpenBell";
 import { robinhoodStockUrl } from "@/components/RhChartPanel";
 
 type SodStep = { title: string; detail: string; ready: boolean };
@@ -281,7 +282,47 @@ export default function DeskBoard() {
   }, [desk, book]);
 
   const tapeBook = tape?.books?.[0];
-  const buyingPower = tape?.buyingPower ?? null;
+  const buyingPower =
+    tape?.buyingPower
+    ?? desk?.state?.rhActivity?.buyingPower
+    ?? desk?.openBrief?.buyingPower
+    ?? null;
+
+  // Pre-open: poll desk every 10s so countdown + fusion status don't go stale.
+  useEffect(() => {
+    const morning = Boolean(desk?.et?.isMorningPlanWindow);
+    const rth = Boolean(desk?.et?.isRth);
+    if (!morning && !rth) return;
+    const iv = window.setInterval(() => {
+      void fetchDeskDay()
+        .then((d) => {
+          setDesk(d);
+          setDeskUpdatedAt(new Date().toISOString());
+        })
+        .catch(() => undefined);
+      void loadPositions({ quiet: true });
+    }, morning ? 10_000 : 20_000);
+    return () => window.clearInterval(iv);
+  }, [desk?.et?.isMorningPlanWindow, desk?.et?.isRth, loadPositions]);
+
+  // If fusion is broken in the morning window, kick Analyze once on mount/load.
+  useEffect(() => {
+    if (!desk?.et?.isMorningPlanWindow) return;
+    if (desk.refreshing || busy) return;
+    const broken =
+      desk.lastDecision?.source === "nim_error"
+      || desk.lastDecision?.source === "nim_unavailable";
+    if (!broken) return;
+    const key = `open-kick-${desk.et?.dateKey || ""}`;
+    try {
+      if (sessionStorage.getItem(key) === "1") return;
+      sessionStorage.setItem(key, "1");
+    } catch {
+      /* ignore */
+    }
+    void onRefresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [desk?.et?.isMorningPlanWindow, desk?.lastDecision?.source]);
   const core = tapeBook?.core?.join(", ") || meta.tickers.slice(0, 3).join(", ");
   const tang = tapeBook?.tangential?.join(", ") || meta.tickers.slice(3, 6).join(", ");
 
@@ -481,6 +522,45 @@ export default function DeskBoard() {
           <p className="mt-1 text-sm text-[var(--ink-soft)]">{meta.tagline}</p>
         ) : null}
       </motion.div>
+
+      <OpenBell
+        desk={desk}
+        positions={heldPositions}
+        buyingPower={buyingPower}
+        busy={busy}
+        onAnalyzeNow={onRefresh}
+        onProtectLosers={async () => {
+          const losers = heldPositions.filter((p) => {
+            if (p.avgCost == null || p.lastPrice == null || !p.avgCost) return false;
+            return p.lastPrice < p.avgCost * 0.9985;
+          });
+          if (!losers.length) {
+            toast.message("No marked losers to protect");
+            return;
+          }
+          setBusy(true);
+          try {
+            let n = 0;
+            for (const p of losers.slice(0, 6)) {
+              const out = (await protectHeldPosition({
+                symbol: p.symbol,
+                avgCost: p.avgCost,
+                mark: p.lastPrice,
+                quantity: p.quantity,
+                marketValue: p.marketValue,
+                live: Boolean(desk?.autoLive),
+              })) as { ok?: boolean; error?: string };
+              if (out?.ok !== false && !out?.error) n += 1;
+            }
+            toast.success(`Protect armed on ${n} loser${n === 1 ? "" : "s"}`);
+            setPlayRefreshToken((x) => x + 1);
+          } catch (e) {
+            toast.error("Protect failed", { description: String((e as Error).message || e) });
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
 
       <MissionControl
         desk={desk}

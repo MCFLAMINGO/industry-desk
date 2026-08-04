@@ -306,6 +306,39 @@ export type DeskFocusAlert = {
   note?: string;
 };
 
+/** Pre-open / recovery brief — how to make the day band from the live book. */
+export type DeskOpenBrief = {
+  at?: string;
+  headline?: string;
+  plain?: string;
+  answer?: string;
+  minsToOpen?: number | null;
+  isPreOpen?: boolean;
+  isRth?: boolean;
+  goalPct?: number;
+  bookPnlPct?: number | null;
+  bookPnlUsd?: number | null;
+  holePct?: number;
+  holeUsd?: number | null;
+  bookCost?: number | null;
+  bookValue?: number | null;
+  buyingPower?: number | null;
+  fusion?: {
+    action?: string | null;
+    symbol?: string | null;
+    source?: string | null;
+    why?: string | null;
+    broken?: boolean;
+    refreshing?: boolean;
+  };
+  staging?: { symbol?: string; side?: string | null; strategy?: string | null } | null;
+  tapeLead?: { symbol?: string; side?: string; changePct?: number; score?: number } | null;
+  ramp?: Array<{ symbol: string; pnlPct?: number | null; marketValue?: number | null }>;
+  protect?: Array<{ symbol: string; pnlPct?: number | null; marketValue?: number | null }>;
+  steps?: Array<{ kind?: string; title?: string; detail?: string; symbols?: string[] }>;
+  error?: string;
+};
+
 /** Regime core: live witnesses rhymed to past crises + past news moments. */
 export type DeskRegime = {
   at?: string;
@@ -444,6 +477,8 @@ export type DeskDayState = {
   } | null;
   /** Regime thinking core — past-news rhymes + consensus stance. */
   regime?: DeskRegime | null;
+  /** Open bell / recovery plan — hole to +1% and what to do. */
+  openBrief?: DeskOpenBrief | null;
   /** True while a desk-day pass (fusion) is running server-side. */
   refreshing?: boolean;
   refreshStartedAt?: string | null;
