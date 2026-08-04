@@ -408,6 +408,49 @@ export default function DeskBoard() {
         </div>
       ) : null}
 
+      {desk?.hintMemory && (desk.hintMemory.total || 0) > 0 ? (
+        <div className="mb-6 rounded-3xl border border-[var(--line)] bg-white/55 px-4 py-3 text-sm text-[var(--ink)]">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--teal)]">
+            Hint memory
+            <span className="mono ml-2 normal-case tracking-normal text-[var(--ink-soft)]">
+              {desk.hintMemory.watching || 0} watching · {desk.hintMemory.confirmed || 0} confirmed ·{" "}
+              {desk.hintMemory.strategyReady || 0} strategy-ready
+            </span>
+          </p>
+          <p className="mt-1 text-xs text-[var(--ink-soft)]">
+            See a hint, watch it, wait for week/month repeat — then fusion invents the larger-move plan.
+          </p>
+          <ul className="mt-2 space-y-2">
+            {[
+              ...(desk.hintMemory.strategyReadyList || []).slice(0, 3),
+              ...(desk.hintMemory.confirmedList || []).slice(0, 2),
+              ...(desk.hintMemory.watchingList || []).slice(0, 2),
+            ]
+              .slice(0, 5)
+              .map((h) => (
+                <li key={h.id || h.label} className="border-t border-[var(--line)] pt-2 first:border-0 first:pt-0">
+                  <p className="leading-snug">
+                    <span className="mono text-xs uppercase text-[var(--teal-deep)]">
+                      {h.status || "watching"}
+                      {h.symbol ? ` · ${h.symbol}` : ""}
+                      {h.weekHits != null || h.monthHits != null
+                        ? ` · w${h.weekHits || 0}/m${h.monthHits || 0}`
+                        : ""}
+                    </span>
+                    <span className="ml-2 text-[var(--ink)]">{h.label}</span>
+                  </p>
+                  {h.watchFor ? (
+                    <p className="mt-0.5 text-xs text-[var(--ink-soft)]">Watch for: {h.watchFor}</p>
+                  ) : null}
+                  {h.status === "strategy_ready" && h.largerMove ? (
+                    <p className="mt-0.5 text-xs text-[var(--ink-soft)]">Larger move: {h.largerMove}</p>
+                  ) : null}
+                </li>
+              ))}
+          </ul>
+        </div>
+      ) : null}
+
       <div className="mb-8 flex flex-wrap items-center gap-2">
         {DESK_BOOKS.map((b) => {
           const active = (book || "all") === b.id;

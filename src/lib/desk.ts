@@ -235,6 +235,20 @@ export function planFillTruth(plan: DeskPlan): {
   return { kind: "unknown", label: "No fill yet", orderState: state };
 }
 
+export type DeskHint = {
+  id?: string;
+  status?: "seen" | "watching" | "confirmed" | "strategy_ready" | string;
+  symbol?: string | null;
+  industry?: string | null;
+  label?: string;
+  watchFor?: string | null;
+  largerMove?: string | null;
+  horizonHint?: string;
+  weekHits?: number;
+  monthHits?: number;
+  lastAt?: string;
+};
+
 export type DeskDayState = {
   ok?: boolean;
   error?: string;
@@ -261,9 +275,28 @@ export type DeskDayState = {
     instrument?: string | null;
     confidence?: number;
     kill?: string[];
+    hints?: Array<{
+      label?: string;
+      symbol?: string | null;
+      industry?: string | null;
+      watchFor?: string | null;
+      largerMove?: string | null;
+      horizon?: string;
+    }>;
     source?: string;
     contextBytes?: number;
     duration_ms?: number;
+  } | null;
+  /** Multi-session hint memory: see → watch → week/month repeat → larger move. */
+  hintMemory?: {
+    note?: string;
+    total?: number;
+    watching?: number;
+    confirmed?: number;
+    strategyReady?: number;
+    watchingList?: DeskHint[];
+    confirmedList?: DeskHint[];
+    strategyReadyList?: DeskHint[];
   } | null;
   autoExecute?: boolean;
   autoLive?: boolean;
