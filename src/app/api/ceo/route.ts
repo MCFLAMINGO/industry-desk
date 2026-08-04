@@ -4,22 +4,57 @@ import { railwayAuthed } from "@/lib/railway";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+const GET_TIMEOUT_MS = 20_000;
+const POST_TIMEOUT_MS = 45_000;
+
 async function asJson(res: Response) {
   const text = await res.text();
   if (!text.trim()) {
     return NextResponse.json(
-      { error: `Empty upstream response (${res.status})` },
-      { status: res.status || 502 }
+      {
+        ok: false,
+        error: `Empty upstream response (${res.status})`,
+      },
+      { status: res.status >= 400 ? res.status : 502 }
     );
   }
   try {
-    return NextResponse.json(JSON.parse(text), { status: res.status });
+    const data = JSON.parse(text) as Record<string, unknown>;
+    return NextResponse.json(data, { status: res.status });
   } catch {
     return NextResponse.json(
-      { error: `Invalid upstream JSON (${res.status})`, body: text.slice(0, 200) },
+      {
+        ok: false,
+        error: `Invalid upstream JSON (${res.status})`,
+        body: text.slice(0, 200),
+      },
       { status: 502 }
     );
   }
+}
+
+function fail(err: unknown, status = 500) {
+  const message = err instanceof Error ? err.message : "Unknown error";
+  const timedOut =
+    message.includes("aborted") ||
+    message.includes("Timeout") ||
+    message.includes("timeout") ||
+    (err instanceof Error && err.name === "AbortError");
+  return NextResponse.json(
+    {
+      ok: false,
+      error: timedOut ? `Desk API timed out — ${message}` : message,
+    },
+    { status: timedOut ? 504 : status }
+  );
+}
+
+async function proxy(path: string, init: RequestInit = {}, timeoutMs = GET_TIMEOUT_MS) {
+  const res = await railwayAuthed(path, {
+    ...init,
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  return asJson(res);
 }
 
 /** GET desk-day / industry-tape / plans — reuses Swarm Robinhood tokens. */
@@ -27,28 +62,24 @@ export async function GET(req: NextRequest) {
   const action = req.nextUrl.searchParams.get("action") || "desk-day";
   try {
     if (action === "desk-day") {
-      const res = await railwayAuthed("/api/ceo/desk-day");
-      return asJson(res);
+      return await proxy("/api/ceo/desk-day", {}, GET_TIMEOUT_MS);
     }
     if (action === "industry-tape") {
       const book = req.nextUrl.searchParams.get("book");
       const path = book
         ? `/api/ceo/industry-tape?book=${encodeURIComponent(book)}`
         : "/api/ceo/industry-tape";
-      const res = await railwayAuthed(path);
-      return asJson(res);
+      return await proxy(path, {}, GET_TIMEOUT_MS);
     }
     if (action === "plans" || action === "open-book") {
       const id = req.nextUrl.searchParams.get("id");
       const path = id
         ? `/api/ceo/plans?id=${encodeURIComponent(id)}`
         : "/api/ceo/plans";
-      const res = await railwayAuthed(path);
-      return asJson(res);
+      return await proxy(path, {}, GET_TIMEOUT_MS);
     }
     if (action === "trader") {
-      const res = await railwayAuthed("/api/ceo/trader");
-      return asJson(res);
+      return await proxy("/api/ceo/trader", {}, GET_TIMEOUT_MS);
     }
     if (action === "desk-newsletter") {
       const list = req.nextUrl.searchParams.get("list");
@@ -56,15 +87,11 @@ export async function GET(req: NextRequest) {
         list === "1" || list === "true"
           ? `/api/ceo/desk-newsletter?list=1&limit=${encodeURIComponent(req.nextUrl.searchParams.get("limit") || "14")}`
           : "/api/ceo/desk-newsletter";
-      const res = await railwayAuthed(path);
-      return asJson(res);
+      return await proxy(path, {}, GET_TIMEOUT_MS);
     }
-    return NextResponse.json({ error: "Unknown action" }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "Unknown action" }, { status: 400 });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Unknown error" },
-      { status: 500 }
-    );
+    return fail(err);
   }
 }
 
@@ -86,16 +113,18 @@ export async function POST(req: NextRequest) {
                 : action === "trader-run"
                   ? "/api/ceo/trader/run"
                   : "/api/ceo/arm-plan";
-    const res = await railwayAuthed(path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    return asJson(res);
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Unknown error" },
-      { status: 500 }
+    // desk-day is async on Railway by default — keep proxy budget short.
+    const timeoutMs = action === "desk-day" ? 25_000 : POST_TIMEOUT_MS;
+    return await proxy(
+      path,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      timeoutMs
     );
+  } catch (err) {
+    return fail(err);
   }
 }
