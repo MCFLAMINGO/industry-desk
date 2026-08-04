@@ -96,6 +96,12 @@ export async function GET(req: NextRequest) {
         GET_TIMEOUT_MS
       );
     }
+    if (action === "desk-regime") {
+      return await proxy("/api/ceo/desk-regime", {}, GET_TIMEOUT_MS);
+    }
+    if (action === "desk-risk-off") {
+      return await proxy("/api/ceo/desk-risk-off", {}, GET_TIMEOUT_MS);
+    }
     return NextResponse.json({ ok: false, error: "Unknown action" }, { status: 400 });
   } catch (err) {
     return fail(err);
@@ -119,9 +125,14 @@ export async function POST(req: NextRequest) {
                 ? "/api/ceo/desk-newsletter"
                 : action === "trader-run"
                   ? "/api/ceo/trader/run"
-                  : "/api/ceo/arm-plan";
-    // desk-day is async on Railway by default — keep proxy budget short.
-    const timeoutMs = action === "desk-day" ? 25_000 : POST_TIMEOUT_MS;
+                  : action === "desk-regime"
+                    ? "/api/ceo/desk-regime"
+                    : action === "desk-risk-off"
+                      ? "/api/ceo/desk-risk-off"
+                      : "/api/ceo/arm-plan";
+    // desk-day / regime can be slow (news + FRED + NIM).
+    const timeoutMs =
+      action === "desk-day" || action === "desk-regime" ? 45_000 : POST_TIMEOUT_MS;
     return await proxy(
       path,
       {

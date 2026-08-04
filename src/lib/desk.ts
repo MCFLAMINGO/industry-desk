@@ -306,6 +306,67 @@ export type DeskFocusAlert = {
   note?: string;
 };
 
+/** Regime core: live witnesses rhymed to past crises + past news moments. */
+export type DeskRegime = {
+  at?: string;
+  stance?:
+    | "stay_aboard"
+    | "leave_boat"
+    | "building_new_boat"
+    | "dip_buy_options"
+    | "mixed"
+    | string;
+  confidence?: number;
+  plain?: string;
+  topPlaybook?: {
+    id?: string;
+    name?: string;
+    score?: number;
+    analogs?: string[];
+    leaveBoat?: string;
+    newBoat?: string;
+  } | null;
+  playbooks?: Array<{
+    id?: string;
+    name?: string;
+    score?: number;
+    litCount?: number;
+    hintTotal?: number;
+    pastNewsMoment?: { id?: string; era?: string; phase?: string; label?: string } | null;
+    litHints?: Array<{ id?: string; label?: string; score?: number; witnesses?: string[] }>;
+    leaveBoat?: string;
+    newBoat?: string;
+    analogs?: string[];
+  }>;
+  historicalNews?: {
+    hitCount?: number;
+    newsStanceHint?: { stance?: string; plain?: string; momentId?: string } | null;
+    hits?: Array<{
+      id?: string;
+      era?: string;
+      label?: string;
+      phase?: string;
+      score?: number;
+      playbookId?: string;
+      modernRhyme?: string;
+      sampleTitles?: string[];
+      exemplars?: string[];
+    }>;
+    note?: string;
+  } | null;
+  actions?: string[];
+  watchNext?: string[];
+  note?: string;
+  witnesses?: {
+    fred?: boolean;
+    news?: number;
+    pastNewsHits?: number;
+    tapeBooks?: number;
+    hintMemory?: boolean;
+    nim?: boolean;
+  };
+};
+
 export type DeskDayState = {
   ok?: boolean;
   error?: string;
@@ -369,6 +430,20 @@ export type DeskDayState = {
   } | null;
   /** Optional operator focus note (secondary). */
   focusAlert?: DeskFocusAlert | null;
+  /** Operator / auto shock latch. */
+  riskOff?: {
+    active?: boolean;
+    riskOff?: {
+      active?: boolean;
+      plain?: string | null;
+      headline?: string | null;
+      reason?: string;
+      at?: string;
+    } | null;
+    bankMode?: boolean;
+  } | null;
+  /** Regime thinking core — past-news rhymes + consensus stance. */
+  regime?: DeskRegime | null;
   /** True while a desk-day pass (fusion) is running server-side. */
   refreshing?: boolean;
   refreshStartedAt?: string | null;
@@ -641,6 +716,40 @@ export async function armDeskPlay(input: {
           + ` (~${thesisPct}% thesis · ${rank.horizon}). Not a naked hold.`,
         thesis: `${rank.industryLabel} ${rank.strategy} · ~${thesisPct}% · ${rank.horizon}`,
       },
+    }),
+  });
+  return readJson(res);
+}
+
+/** Refresh regime thinking core (past-news rhyme + consensus). */
+export async function runRegimePass(): Promise<{ ok?: boolean; regime?: DeskRegime; error?: string }> {
+  const res = await fetch("/api/ceo", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "desk-regime", reason: "manual" }),
+  });
+  return readJson(res) as Promise<{ ok?: boolean; regime?: DeskRegime; error?: string }>;
+}
+
+/** Operator RISK OFF — close day longs; optionally flatten option shorts. */
+export async function runDeskRiskOff(input: {
+  plain?: string;
+  headline?: string;
+  flattenShorts?: boolean;
+  live?: boolean;
+} = {}) {
+  const res = await fetch("/api/ceo", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "desk-risk-off",
+      reason: "operator",
+      plain: input.plain,
+      headline: input.headline,
+      flattenLongs: true,
+      flattenShorts: Boolean(input.flattenShorts),
+      live: Boolean(input.live),
+      confirm: Boolean(input.live),
     }),
   });
   return readJson(res);
