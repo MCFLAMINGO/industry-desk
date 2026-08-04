@@ -36,6 +36,7 @@ import StagingRail from "@/components/StagingRail";
 import AgentPushFeed from "@/components/AgentPushFeed";
 import MissionControl from "@/components/MissionControl";
 import OpenBell from "@/components/OpenBell";
+import TodayPlan from "@/components/TodayPlan";
 import { robinhoodStockUrl } from "@/components/RhChartPanel";
 
 type SodStep = { title: string; detail: string; ready: boolean };
@@ -90,7 +91,9 @@ function buildSodSteps(input: {
       title: "Preview or Approve live",
       detail: et?.isRth
         ? "RTH open — use Staging for Preview / Approve live on Agentic."
-        : "Off-hours OK — Approve live from Staging; worker places at next Mon–Fri 9:30 ET open.",
+        : et?.isMorningPlanWindow
+          ? "Morning window into the open — Analyze first, then Approve only a fusion/Staging call (not every green ranked card)."
+          : "Off-hours OK — Approve live from Staging; worker places at next Mon–Fri 9:30 ET open.",
       ready: Boolean(top) && !top?.inBook,
     },
     {
@@ -501,6 +504,45 @@ export default function DeskBoard() {
         </a>
       </div>
 
+      <TodayPlan
+        desk={desk}
+        positions={heldPositions}
+        buyingPower={buyingPower}
+        busy={busy}
+        onAnalyzeNow={onRefresh}
+        onProtectLosers={async () => {
+          const losers = heldPositions.filter((p) => {
+            if (p.avgCost == null || p.lastPrice == null || !p.avgCost) return false;
+            return p.lastPrice < p.avgCost * 0.9985;
+          });
+          if (!losers.length) {
+            toast.message("No marked losers to protect");
+            return;
+          }
+          setBusy(true);
+          try {
+            let n = 0;
+            for (const p of losers.slice(0, 6)) {
+              const out = (await protectHeldPosition({
+                symbol: p.symbol,
+                avgCost: p.avgCost,
+                mark: p.lastPrice,
+                quantity: p.quantity,
+                marketValue: p.marketValue,
+                live: Boolean(desk?.autoLive),
+              })) as { ok?: boolean; error?: string };
+              if (out?.ok !== false && !out?.error) n += 1;
+            }
+            toast.success(`Protect armed on ${n} loser${n === 1 ? "" : "s"}`);
+            setPlayRefreshToken((x) => x + 1);
+          } catch (e) {
+            toast.error("Protect failed", { description: String((e as Error).message || e) });
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -534,28 +576,20 @@ export default function DeskBoard() {
             if (p.avgCost == null || p.lastPrice == null || !p.avgCost) return false;
             return p.lastPrice < p.avgCost * 0.9985;
           });
-          if (!losers.length) {
-            toast.message("No marked losers to protect");
-            return;
-          }
+          if (!losers.length) return;
           setBusy(true);
           try {
-            let n = 0;
             for (const p of losers.slice(0, 6)) {
-              const out = (await protectHeldPosition({
+              await protectHeldPosition({
                 symbol: p.symbol,
                 avgCost: p.avgCost,
                 mark: p.lastPrice,
                 quantity: p.quantity,
                 marketValue: p.marketValue,
                 live: Boolean(desk?.autoLive),
-              })) as { ok?: boolean; error?: string };
-              if (out?.ok !== false && !out?.error) n += 1;
+              });
             }
-            toast.success(`Protect armed on ${n} loser${n === 1 ? "" : "s"}`);
             setPlayRefreshToken((x) => x + 1);
-          } catch (e) {
-            toast.error("Protect failed", { description: String((e as Error).message || e) });
           } finally {
             setBusy(false);
           }
@@ -825,11 +859,17 @@ export default function DeskBoard() {
             </li>
           ))}
         </ol>
-        {!desk?.et?.isRth ? (
+        {!desk?.et?.isRth && !desk?.et?.isMorningPlanWindow ? (
           <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
             Session closed — you can still <span className="font-semibold">Approve live</span> from
             Staging (Sunday night included). The worker holds the plan and places at the next regular
             open (Mon–Fri 9:30 ET).
+          </p>
+        ) : null}
+        {desk?.et?.isMorningPlanWindow && !desk?.et?.isRth ? (
+          <p className="mt-3 rounded-2xl border border-teal-200 bg-teal-50 px-3 py-2 text-xs text-teal-950">
+            Morning window — scroll to <span className="font-semibold">Today&apos;s plan</span> at the
+            top for money, hole-to-+1%, and the trade list. Ranked cards below are a menu, not auto-buys.
           </p>
         ) : null}
       </section>
