@@ -314,9 +314,12 @@ export type DeskDayState = {
     weekday?: string;
     hour?: number;
     minute?: number;
+    mins?: number;
     isRth?: boolean;
     isMorningPlanWindow?: boolean;
+    isPreClose?: boolean;
     isAfterClose?: boolean;
+    isWeekend?: boolean;
   };
   dayGoal?: { min?: number; stretch?: number };
   /** Fraction, e.g. 0.0119 = +1.19% book day estimate */
