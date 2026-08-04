@@ -375,6 +375,17 @@ export type DeskDayState = {
       narrative?: string;
       proposeArm?: DeskRank | null;
       synthesis?: DeskSynthesis | null;
+      industryLead?: {
+        industryId?: string;
+        label?: string;
+        avgScore?: number;
+        changePct?: number | null;
+      } | null;
+      sleeves?: {
+        day?: DeskRank[];
+        week?: DeskRank[];
+        month?: DeskRank[];
+      };
     };
     industryTilt?: Array<{
       industryId: string;

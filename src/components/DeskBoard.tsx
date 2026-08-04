@@ -31,6 +31,9 @@ import PlayByPlayRail from "@/components/PlayByPlayRail";
 import LivePositionsRail, {
   LIVE_POSITIONS_POLL_MS,
 } from "@/components/LivePositionsRail";
+import DeskBrief from "@/components/DeskBrief";
+import StagingRail from "@/components/StagingRail";
+import { robinhoodStockUrl } from "@/components/RhChartPanel";
 
 type SodStep = { title: string; detail: string; ready: boolean };
 
@@ -67,7 +70,7 @@ function buildSodSteps(input: {
       detail: syn?.global?.action?.note
         || syn?.narrative
         || syn?.global?.narrative
-        || "Refresh builds edge/Kelly + agree/disagree decision cards (not news wallpaper).",
+        || "Re-run fusion builds edge/Kelly + agree/disagree cards into Staging (not news wallpaper).",
       ready: synReady,
     },
     {
@@ -77,23 +80,23 @@ function buildSodSteps(input: {
           + (top.synthesis?.verdict ? ` · Elite ${top.synthesis.verdict}` : "")
           + (top.inBook ? " · already open" : "")
           + "."
-        : "No ranked play yet — hit Refresh after quotes land.",
+        : "No ranked play yet — Re-run fusion after quotes land.",
       ready: Boolean(top),
     },
     {
       title: "Preview or Approve live",
       detail: et?.isRth
-        ? "RTH open — Preview = dry-run, Approve live places on Agentic now."
-        : "Off-hours OK — Approve live arms now and places at the next Mon–Fri 9:30 ET open (think Sunday, fill Monday).",
+        ? "RTH open — use Staging for Preview / Approve live on Agentic."
+        : "Off-hours OK — Approve live from Staging; worker places at next Mon–Fri 9:30 ET open.",
       ready: Boolean(top) && !top?.inBook,
     },
     {
       title: "Watch positions",
       detail: held.length
-        ? `Live RH holds: ${held.join(", ")} — pinned at the top of this page.`
+        ? `Live RH holds: ${held.join(", ")} — rail above Today’s desk.`
         : bookSymbols.length
-          ? `No RH holdings in ${book === "all" ? "industry books" : book} — Live positions rail is above Start of day.`
-          : "Live positions rail is above Start of day.",
+          ? `No RH holdings in ${book === "all" ? "industry books" : book} — positions rail is above Today’s desk.`
+          : "Positions rail is above Today’s desk.",
       ready: true,
     },
   ];
@@ -140,6 +143,7 @@ export default function DeskBoard() {
   const [positionsRefreshing, setPositionsRefreshing] = useState(false);
   const [positionsError, setPositionsError] = useState<string | null>(null);
   const [positionsTickAt, setPositionsTickAt] = useState<number | null>(null);
+  const [stagedSymbol, setStagedSymbol] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [arming, setArming] = useState<string | null>(null);
   const [notional, setNotional] = useState(25);
@@ -200,6 +204,14 @@ export default function DeskBoard() {
     if (d.status === "fulfilled") {
       nextDesk = d.value;
       setDesk(d.value);
+      const seed =
+        d.value.lastDecision?.symbol ||
+        d.value.state?.morningPlan?.proposeArm?.symbol ||
+        d.value.state?.rankings?.[0]?.symbol ||
+        null;
+      if (seed) {
+        setStagedSymbol((prev) => prev || String(seed).toUpperCase());
+      }
     } else {
       errors.push(`Desk day: ${d.reason?.message || d.reason}`);
     }
@@ -293,11 +305,15 @@ export default function DeskBoard() {
       const lead = forBook[0]?.symbol;
       const heldN = pos && "positions" in pos ? pos.positions.length : livePositions.length;
       const stillRunning = refreshed?.refreshing === true;
-      toast.success(stillRunning ? "Desk refresh running" : "Desk refreshed", {
+      const fusion = refreshed?.lastDecision;
+      toast.success(stillRunning ? "Fusion still running" : "Fusion pass complete", {
         description: [
-          stillRunning ? "fusion still working — board will catch up" : null,
+          stillRunning ? "board will catch up when NIM finishes" : null,
+          fusion?.action
+            ? `decision ${fusion.action}${fusion.symbol ? ` · ${fusion.symbol}` : ""}`
+            : null,
           `${forBook.length} ranked play${forBook.length === 1 ? "" : "s"}`,
-          lead ? `lead ${lead}` : null,
+          lead ? `tape lead ${lead}` : null,
           `${heldN} RH position${heldN === 1 ? "" : "s"}`,
           session,
           new Date(at).toLocaleTimeString(),
@@ -305,8 +321,14 @@ export default function DeskBoard() {
           .filter(Boolean)
           .join(" · "),
       });
+      const stageSym =
+        fusion?.symbol ||
+        refreshed?.state?.morningPlan?.proposeArm?.symbol ||
+        forBook[0]?.symbol ||
+        null;
+      if (stageSym) setStagedSymbol(String(stageSym).toUpperCase());
     } catch (e) {
-      toast.error("Refresh failed", { description: (e as Error).message });
+      toast.error("Fusion refresh failed", { description: (e as Error).message });
     } finally {
       setBusy(false);
     }
@@ -480,38 +502,9 @@ export default function DeskBoard() {
           <p className="font-semibold">BANK MODE — agents stop opening new nickels</p>
           <p className="mt-1 text-amber-950/90">
             Day goal was hit or peaked and rolled. Workers protect/trail existing Agentic holds
-            (you cannot sell except through agents). Refresh desk to attach Protect on any naked
+            (you cannot sell except through agents). Re-run fusion to attach Protect on any naked
             inventory. Options puts are still a separate sleeve — not auto last-hour yet.
           </p>
-        </div>
-      ) : null}
-
-      {desk?.lastDecision ? (
-        <div className="mb-6 rounded-3xl border border-[var(--line)] bg-white/70 px-4 py-3 text-sm text-[var(--ink)]">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--teal)]">
-            Fusion decision
-            {desk.lastDecision.action ? (
-              <span className="mono ml-2 normal-case tracking-normal text-[var(--ink)]">
-                {desk.lastDecision.action}
-                {desk.lastDecision.symbol ? ` · ${desk.lastDecision.symbol}` : ""}
-                {desk.lastDecision.confidence != null
-                  ? ` · ${Math.round(desk.lastDecision.confidence * 100)}%`
-                  : ""}
-              </span>
-            ) : null}
-          </p>
-          <p className="mt-1.5 leading-relaxed text-[var(--ink-soft)]">
-            {desk.lastDecision.why || "No why returned."}
-          </p>
-          {desk.lastDecision.contextBytes != null ? (
-            <p className="mt-1 text-xs text-[var(--ink-soft)]">
-              Packed {Math.round(desk.lastDecision.contextBytes / 1024)} KB desk state
-              {desk.lastDecision.duration_ms != null
-                ? ` · decided in ${desk.lastDecision.duration_ms}ms`
-                : ""}
-              {" · NIM fusion (not uptape script)"}
-            </p>
-          ) : null}
         </div>
       ) : null}
 
@@ -632,10 +625,11 @@ export default function DeskBoard() {
           type="button"
           disabled={busy || Boolean(arming)}
           onClick={onRefresh}
+          title="Re-quotes industry books, rebuilds synthesis + industry ideas, runs NIM fusion, updates Staging. Does not place live orders unless auto-live is already on."
           className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-white/60 px-3.5 py-1.5 text-sm font-medium text-[var(--ink-soft)] hover:text-[var(--teal-deep)] disabled:opacity-50"
         >
           <RefreshCw className={clsx("h-3.5 w-3.5", busy && "animate-spin")} />
-          {busy ? "Refreshing…" : "Refresh desk"}
+          {busy ? "Running fusion…" : "Re-run fusion"}
         </button>
         <Link
           href="/connect"
@@ -644,8 +638,11 @@ export default function DeskBoard() {
           Robinhood
         </Link>
         {deskUpdatedAt ? (
-          <span className="text-xs text-[var(--ink-soft)]">
-            Updated {new Date(deskUpdatedAt).toLocaleTimeString()}
+          <span className="max-w-[14rem] text-xs text-[var(--ink-soft)]">
+            Fusion/tape {new Date(deskUpdatedAt).toLocaleTimeString()}
+            <span className="mt-0.5 block font-normal normal-case tracking-normal">
+              Positions refresh separately in the rail above Staging.
+            </span>
           </span>
         ) : null}
       </div>
@@ -702,9 +699,27 @@ export default function DeskBoard() {
         }}
       />
 
+      <DeskBrief
+        desk={desk}
+        buyingPower={buyingPower}
+        heldCount={heldPositions.length}
+        selectedSymbol={stagedSymbol}
+        onSelectSymbol={(sym) => setStagedSymbol(sym.toUpperCase())}
+      />
+
+      <StagingRail
+        desk={desk}
+        selectedSymbol={stagedSymbol}
+        onSelectSymbol={(sym) => setStagedSymbol(sym.toUpperCase())}
+        onArm={onArm}
+        arming={arming}
+        busy={busy}
+        notional={notional}
+      />
+
       <section className="glass mb-8 rounded-3xl p-5 sm:p-6">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--teal)]">
-          Start of day
+          Start of day checklist
         </p>
         <ol className="mt-4 grid gap-4 sm:grid-cols-5">
           {sodSteps.map((step, i) => (
@@ -728,47 +743,11 @@ export default function DeskBoard() {
             </li>
           ))}
         </ol>
-        {desk?.state?.morningPlan?.headline ? (
-          <p className="mt-4 text-sm font-medium text-[var(--ink)]">
-            {desk.state.morningPlan.headline}
-          </p>
-        ) : null}
-        {(desk?.state?.synthesis || desk?.state?.morningPlan?.synthesis) ? (
-          <div className="mt-4 rounded-2xl border border-[var(--line)] bg-white/50 px-3 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--teal)]">
-              Fiduciary synthesis
-            </p>
-            <p className="mt-1.5 text-sm leading-relaxed text-[var(--ink)]">
-              {(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.global?.action?.note
-                || (desk.state.synthesis || desk.state.morningPlan?.synthesis)?.global?.narrative
-                || (desk.state.synthesis || desk.state.morningPlan?.synthesis)?.narrative}
-            </p>
-            <p className="mt-1 text-xs text-[var(--ink-soft)]">
-              {[
-                (desk.state.synthesis || desk.state.morningPlan?.synthesis)?.approveCount != null
-                  ? `${(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.approveCount} approve`
-                  : null,
-                (desk.state.synthesis || desk.state.morningPlan?.synthesis)?.previewCount != null
-                  ? `${(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.previewCount} preview`
-                  : null,
-                (desk.state.synthesis || desk.state.morningPlan?.synthesis)?.conflictCount != null
-                  ? `${(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.conflictCount} conflict`
-                  : null,
-                (desk.state.synthesis || desk.state.morningPlan?.synthesis)?.microCount != null
-                  ? `${(desk.state.synthesis || desk.state.morningPlan?.synthesis)?.microCount} reliable micro`
-                  : null,
-                (desk.state.synthesis || desk.state.morningPlan?.synthesis)?.top?.join(" · "),
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </p>
-          </div>
-        ) : null}
         {!desk?.et?.isRth ? (
-          <p className="mt-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-            Session closed — you can still <span className="font-semibold">Approve live</span> when you have time
-            (Sunday night included). The worker holds the plan and places at the next regular open (Mon–Fri 9:30 ET),
-            instead of firing a weekend GFD that dies queued.
+          <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+            Session closed — you can still <span className="font-semibold">Approve live</span> from
+            Staging (Sunday night included). The worker holds the plan and places at the next regular
+            open (Mon–Fri 9:30 ET).
           </p>
         ) : null}
       </section>
@@ -779,8 +758,9 @@ export default function DeskBoard() {
             Ranked plays
           </p>
           <p className="mt-1 text-sm text-[var(--ink-soft)]">
-            Next moves only — live fills stay in Live positions at the top. Preview always works;
-            Approve live needs confirm + <span className="mono">ROBINHOOD_LIVE_TRADING</span>
+            Wider menu under Staging — not auto-buys. Live fills stay in Live positions.
+            Preview always works; Approve live needs confirm +{" "}
+            <span className="mono">ROBINHOOD_LIVE_TRADING</span>
             {desk?.et?.isRth ? "." : " · off-hours waits for next open."}
           </p>
         </div>
@@ -800,8 +780,9 @@ export default function DeskBoard() {
       <div className="mb-10 grid gap-3">
         {rankings.length === 0 ? (
           <div className="glass rounded-3xl p-5 text-sm text-[var(--ink-soft)]">
-            No rankings for this book in the last desk pass. Hit <span className="font-semibold">Refresh desk</span>
-            {" "}— we now keep per-book ranks (not only the global top 16).
+            No rankings for this book in the last desk pass. Hit{" "}
+            <span className="font-semibold">Re-run fusion</span>
+            {" "}— we keep per-book ranks (not only the global top 16).
           </div>
         ) : (
           rankings.map((r, i) => (
@@ -816,6 +797,21 @@ export default function DeskBoard() {
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="display text-2xl font-semibold">{r.symbol}</h2>
+                    <button
+                      type="button"
+                      onClick={() => setStagedSymbol(r.symbol.toUpperCase())}
+                      className="rounded-full border border-[var(--line)] px-2 py-0.5 text-xs font-medium text-[var(--teal-deep)] hover:bg-[var(--teal)]/10"
+                    >
+                      Stage
+                    </button>
+                    <a
+                      href={robinhoodStockUrl(r.symbol)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 rounded-full border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--ink-soft)] hover:text-[var(--teal-deep)]"
+                    >
+                      RH <ExternalLink className="h-3 w-3" />
+                    </a>
                     <span className="rounded-full border border-[var(--line)] px-2 py-0.5 text-xs uppercase">
                       {r.side}
                     </span>
