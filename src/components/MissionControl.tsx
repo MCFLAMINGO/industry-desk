@@ -2,8 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
-import { Activity, Target, Clock, AlertTriangle, RefreshCw } from "lucide-react";
-import { fmtPct, fmtUsd, type DeskDayState, type DeskRank } from "@/lib/desk";
+import { Activity, Target, Clock, AlertTriangle, RefreshCw, Anchor, Radio } from "lucide-react";
+import {
+  fmtPct,
+  fmtUsd,
+  runDeskRiskOff,
+  runRegimePass,
+  type DeskDayState,
+  type DeskRank,
+  type DeskRegime,
+} from "@/lib/desk";
 import type { RhLivePosition } from "@/lib/robinhood";
 
 type Props = {
@@ -12,7 +20,25 @@ type Props = {
   buyingPower: number | null;
   busy?: boolean;
   onAnalyzeNow: () => void | Promise<void>;
+  onRegimeUpdated?: (regime: DeskRegime | null) => void;
 };
+
+function stanceLabel(stance?: string | null) {
+  switch (stance) {
+    case "leave_boat":
+      return "Leave the boat";
+    case "building_new_boat":
+      return "Building the next boat";
+    case "dip_buy_options":
+      return "Dip-buy with long options";
+    case "mixed":
+      return "Mixed signals";
+    case "stay_aboard":
+      return "Stay aboard";
+    default:
+      return "No regime read yet";
+  }
+}
 
 function minsUntil(etHour: number, etMinute: number, et: DeskDayState["et"]) {
   if (!et || et.hour == null || et.minute == null) return null;
@@ -171,8 +197,12 @@ export default function MissionControl({
   buyingPower,
   busy,
   onAnalyzeNow,
+  onRegimeUpdated,
 }: Props) {
   const [nowTick, setNowTick] = useState(0);
+  const [regimeBusy, setRegimeBusy] = useState(false);
+  const [riskBusy, setRiskBusy] = useState(false);
+  const [localRegime, setLocalRegime] = useState<DeskRegime | null>(null);
   useEffect(() => {
     const iv = window.setInterval(() => setNowTick((n) => n + 1), 15_000);
     return () => window.clearInterval(iv);
@@ -184,6 +214,12 @@ export default function MissionControl({
   const session = sessionPlain(desk?.et, Boolean(desk?.refreshing || busy));
   const fusion = fusionPlain(desk);
   const openLine = atOpenPlain(desk, bookPnlPct);
+  const regime = localRegime || desk?.regime || null;
+  const pastHits = regime?.historicalNews?.hits || [];
+  const hotStance =
+    regime?.stance === "leave_boat"
+    || regime?.stance === "building_new_boat"
+    || regime?.stance === "dip_buy_options";
 
   const progress = bookPnlPct == null ? 0 : Math.max(0, Math.min(1.2, bookPnlPct / goalMin));
   const behind = bookPnlPct != null && bookPnlPct < goalMin * 0.25;
@@ -308,6 +344,116 @@ export default function MissionControl({
             armed a plan.
           </p>
         </div>
+      </div>
+
+      <div
+        className={clsx(
+          "border-t border-[var(--line)] px-5 py-4",
+          hotStance ? "bg-amber-50/90" : "bg-white/60"
+        )}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--teal-deep)]">
+              <Anchor className="h-3.5 w-3.5" /> Boat / regime core
+            </p>
+            <p
+              className={clsx(
+                "mt-2 text-xl font-semibold",
+                regime?.stance === "leave_boat" && "text-[var(--danger)]",
+                regime?.stance === "building_new_boat" && "text-amber-800",
+                regime?.stance === "dip_buy_options" && "text-[var(--ok)]",
+                !hotStance && "text-[var(--ink)]"
+              )}
+            >
+              {stanceLabel(regime?.stance)}
+              {regime?.confidence != null ? (
+                <span className="ml-2 text-sm font-normal text-[var(--ink-soft)]">
+                  · conf {(regime.confidence * 100).toFixed(0)}%
+                </span>
+              ) : null}
+            </p>
+            <p className="mt-1 max-w-3xl text-sm leading-relaxed text-[var(--ink)]">
+              {regime?.plain
+                || "Agents continuously rhyme today’s wire to past news moments (carry 1998/2024, dot-com 1999–2000, GFC 2007–2008). Hit Scan past news when you want a fresh read."}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={regimeBusy}
+              onClick={() => {
+                setRegimeBusy(true);
+                void runRegimePass()
+                  .then((out) => {
+                    const next = out.regime || null;
+                    setLocalRegime(next);
+                    onRegimeUpdated?.(next);
+                  })
+                  .finally(() => setRegimeBusy(false));
+              }}
+              className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--ink)] disabled:opacity-50"
+            >
+              <Radio className={clsx("h-3.5 w-3.5", regimeBusy && "animate-pulse")} />
+              {regimeBusy ? "Scanning past news…" : "Scan past news"}
+            </button>
+            <button
+              type="button"
+              disabled={riskBusy}
+              onClick={() => {
+                if (!window.confirm(
+                  "RISK OFF: close/protect day longs and flatten option shorts (put hedges may still be managed as shorts if marked). Continue?"
+                )) return;
+                setRiskBusy(true);
+                void runDeskRiskOff({
+                  plain: regime?.plain || "Operator RISK OFF from mission control.",
+                  headline: regime?.topPlaybook?.name || "Operator risk-off",
+                  flattenShorts: true,
+                  live: Boolean(desk?.autoLive),
+                }).finally(() => setRiskBusy(false));
+              }}
+              className="inline-flex items-center gap-2 rounded-full bg-[var(--danger)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              {riskBusy ? "Risking off…" : "RISK OFF"}
+            </button>
+          </div>
+        </div>
+
+        {regime?.topPlaybook?.name ? (
+          <p className="mt-3 text-xs text-[var(--ink-soft)]">
+            Top rhyme: {regime.topPlaybook.name}
+            {regime.topPlaybook.analogs?.[0] ? ` · analog ${regime.topPlaybook.analogs[0]}` : ""}
+            {regime.witnesses?.pastNewsHits != null
+              ? ` · ${regime.witnesses.pastNewsHits} past-news hits`
+              : ""}
+          </p>
+        ) : null}
+
+        {pastHits.length > 0 ? (
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {pastHits.slice(0, 4).map((h) => (
+              <div
+                key={h.id || h.label}
+                className="rounded-2xl border border-[var(--line)] bg-white/80 px-3 py-2"
+              >
+                <p className="text-xs font-semibold text-[var(--ink)]">
+                  {h.era} · {h.phase} · {(h.score != null ? h.score * 100 : 0).toFixed(0)}%
+                </p>
+                <p className="mt-0.5 text-sm text-[var(--ink)]">{h.label}</p>
+                <p className="mt-1 text-xs leading-relaxed text-[var(--ink-soft)]">
+                  {h.modernRhyme || h.exemplars?.[0]}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {desk?.riskOff?.active ? (
+          <p className="mt-3 text-sm font-medium text-[var(--danger)]">
+            RISK-OFF latch is active — no new nickels until cleared.
+            {desk.riskOff.riskOff?.plain ? ` ${desk.riskOff.riskOff.plain}` : ""}
+          </p>
+        ) : null}
       </div>
     </section>
   );

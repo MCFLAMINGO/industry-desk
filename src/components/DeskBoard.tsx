@@ -488,6 +488,9 @@ export default function DeskBoard() {
         buyingPower={buyingPower}
         busy={busy}
         onAnalyzeNow={onRefresh}
+        onRegimeUpdated={(regime) => {
+          setDesk((prev) => (prev ? { ...prev, regime } : prev));
+        }}
       />
 
       {desk?.bankMode || desk?.dayGoalHit ? (
