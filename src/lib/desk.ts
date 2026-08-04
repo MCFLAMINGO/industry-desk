@@ -249,6 +249,29 @@ export type DeskHint = {
   lastAt?: string;
 };
 
+export type DeskNewsletter = {
+  id?: string;
+  kind?: string;
+  dateKey?: string;
+  dateLabel?: string;
+  at?: string;
+  subject?: string;
+  source?: string;
+  sections?: {
+    yesterday?: string;
+    today?: string;
+    tomorrow?: string;
+    future?: string;
+    closing?: string;
+  };
+  email?: {
+    sent?: boolean;
+    to?: string | null;
+    id?: string | null;
+    error?: string | null;
+  };
+};
+
 export type DeskDayState = {
   ok?: boolean;
   error?: string;
@@ -298,6 +321,8 @@ export type DeskDayState = {
     confirmedList?: DeskHint[];
     strategyReadyList?: DeskHint[];
   } | null;
+  /** Latest account-owner daily letter (yesterday→today→tomorrow→future). */
+  newsletter?: DeskNewsletter | null;
   autoExecute?: boolean;
   autoLive?: boolean;
   fiduciary?: { note?: string; maxLive?: number; entry?: string };

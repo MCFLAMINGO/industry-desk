@@ -408,6 +408,49 @@ export default function DeskBoard() {
         </div>
       ) : null}
 
+      {desk?.newsletter?.sections ? (
+        <div className="mb-6 rounded-3xl border border-[var(--line)] bg-[#fffaf3] px-4 py-4 text-sm text-[var(--ink)]">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--teal)]">
+            Daily desk letter
+            {desk.newsletter.dateLabel ? (
+              <span className="mono ml-2 normal-case tracking-normal text-[var(--ink-soft)]">
+                {desk.newsletter.dateLabel}
+              </span>
+            ) : null}
+            {desk.newsletter.email?.sent ? (
+              <span className="mono ml-2 normal-case tracking-normal text-[var(--ink-soft)]">
+                · emailed to owner
+              </span>
+            ) : null}
+          </p>
+          <p className="mt-1 text-xs text-[var(--ink-soft)]">
+            The book in real terms — yesterday into today, tomorrow, and further out.
+          </p>
+          {(
+            [
+              ["Yesterday", desk.newsletter.sections.yesterday],
+              ["Today", desk.newsletter.sections.today],
+              ["Tomorrow", desk.newsletter.sections.tomorrow],
+              ["Further out", desk.newsletter.sections.future],
+            ] as const
+          ).map(([label, body]) =>
+            body ? (
+              <div key={label} className="mt-3 border-t border-[var(--line)] pt-3 first:mt-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--teal-deep)]">
+                  {label}
+                </p>
+                <p className="mt-1 leading-relaxed text-[var(--ink)]">{body}</p>
+              </div>
+            ) : null
+          )}
+          {desk.newsletter.sections.closing ? (
+            <p className="mt-3 text-xs italic text-[var(--ink-soft)]">
+              {desk.newsletter.sections.closing}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       {desk?.hintMemory && (desk.hintMemory.total || 0) > 0 ? (
         <div className="mb-6 rounded-3xl border border-[var(--line)] bg-white/55 px-4 py-3 text-sm text-[var(--ink)]">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--teal)]">
