@@ -276,6 +276,8 @@ export type DeskNewsletter = {
 export type DeskAgentAlert = {
   id?: string;
   at?: string;
+  firstAt?: string;
+  lastAt?: string;
   source?: string;
   kind?: string;
   plain?: string;
@@ -291,6 +293,19 @@ export type DeskAgentAlert = {
   anxiety?: boolean;
   ageMs?: number;
   notified?: { telegram?: boolean; email?: boolean } | null;
+  fingerprint?: string | null;
+  /** How many identical copies were rolled into this row today. */
+  repeatCount?: number;
+};
+
+/** End-of-day / intraday rhyme ledger — not the live Agent→you feed. */
+export type DeskAlertDayPattern = {
+  fingerprint?: string;
+  kind?: string;
+  plain?: string;
+  count?: number;
+  firstAt?: string;
+  lastAt?: string;
 };
 
 export type DeskFocusAlert = {
@@ -472,6 +487,9 @@ export type DeskDayState = {
     latest?: DeskAgentAlert | null;
     openAnxiety?: DeskAgentAlert[];
     recent?: DeskAgentAlert[];
+    /** Collapsed repeats for end-of-day pattern tracking. */
+    dayPatterns?: DeskAlertDayPattern[];
+    dateKey?: string | null;
   } | null;
   /** Optional operator focus note (secondary). */
   focusAlert?: DeskFocusAlert | null;
