@@ -321,6 +321,42 @@ export type DeskFocusAlert = {
   note?: string;
 };
 
+/** Was a flat day a real decision, or did the engine fail? */
+export type DeskDayQuality = {
+  dateKey?: string;
+  total?: number;
+  decisions?: number;
+  outages?: number;
+  unsupported?: number;
+  policyBlocks?: number;
+  opens?: number;
+  lastIntegrity?: "decision" | "unsupported" | "outage" | "policy_block" | string | null;
+  lastSource?: string | null;
+  engineHealthy?: boolean | null;
+  verdict?:
+    | "traded"
+    | "flat_by_decision"
+    | "mixed"
+    | "policy_block"
+    | "engine_down"
+    | "unknown"
+    | string;
+  plain?: string;
+};
+
+/** Week-to-date band on realized equity — replaces daily-hole pressure. */
+export type DeskWeekBand = {
+  weekStart?: string;
+  goalPct?: number;
+  startEquity?: number | null;
+  lastEquity?: number | null;
+  weekPct?: number | null;
+  holePct?: number;
+  days?: number;
+  dailyMarks?: Array<{ dateKey: string; pct: number | null; equity: number }>;
+  plain?: string;
+};
+
 /** Pre-open / recovery brief — how to make the day band from the live book. */
 export type DeskOpenBrief = {
   at?: string;
@@ -346,6 +382,8 @@ export type DeskOpenBrief = {
     broken?: boolean;
     refreshing?: boolean;
   };
+  /** Pack fields the model actually cited (audit trail). */
+  used?: string[];
   staging?: { symbol?: string; side?: string | null; strategy?: string | null } | null;
   tapeLead?: { symbol?: string; side?: string; changePct?: number; score?: number } | null;
   ramp?: Array<{ symbol: string; pnlPct?: number | null; marketValue?: number | null }>;
@@ -468,6 +506,11 @@ export type DeskDayState = {
     source?: string;
     contextBytes?: number;
     duration_ms?: number;
+    /** Pack fields the model cited — empty means we cannot audit the call. */
+    used?: string[];
+    citedCount?: number;
+    citedOk?: boolean;
+    compact?: boolean;
   } | null;
   /** Multi-session hint memory: see → watch → week/month repeat → larger move. */
   hintMemory?: {
@@ -509,6 +552,16 @@ export type DeskDayState = {
   regime?: DeskRegime | null;
   /** Open bell / recovery plan — hole to +1% and what to do. */
   openBrief?: DeskOpenBrief | null;
+  /** Decision integrity for today (choice vs outage). */
+  dayQuality?: DeskDayQuality | null;
+  /** Weekly band on realized equity. */
+  weekBand?: DeskWeekBand | null;
+  engine?: {
+    healthy?: boolean | null;
+    lastIntegrity?: string | null;
+    lastSource?: string | null;
+    note?: string | null;
+  } | null;
   /** True while a desk-day pass (fusion) is running server-side. */
   refreshing?: boolean;
   refreshStartedAt?: string | null;

@@ -99,6 +99,13 @@ export async function GET(req: NextRequest) {
     if (action === "desk-regime") {
       return await proxy("/api/ceo/desk-regime", {}, GET_TIMEOUT_MS);
     }
+    if (action === "desk-ledger") {
+      return await proxy(
+        `/api/ceo/desk-ledger?limit=${encodeURIComponent(req.nextUrl.searchParams.get("limit") || "40")}`,
+        {},
+        GET_TIMEOUT_MS
+      );
+    }
     if (action === "desk-risk-off") {
       return await proxy("/api/ceo/desk-risk-off", {}, GET_TIMEOUT_MS);
     }

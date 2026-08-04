@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
-import { RefreshCw, ShieldAlert } from "lucide-react";
+import { RefreshCw, ShieldAlert, CheckCircle2, AlertOctagon, Quote } from "lucide-react";
 import { fmtPct, fmtUsd, type DeskDayState } from "@/lib/desk";
 import type { RhLivePosition } from "@/lib/robinhood";
 
@@ -134,13 +134,12 @@ function AllocChart({ rows }: { rows: Row[] }) {
     "#57534e",
     "#44403c",
   ];
-  let x = 0;
-  const segs = rows.map((r, i) => {
+  const segs: Array<Row & { x: number; w: number; color: string }> = [];
+  rows.reduce((offset, r, i) => {
     const w = (r.mv / total) * 100;
-    const seg = { ...r, x, w, color: colors[i % colors.length] };
-    x += w;
-    return seg;
-  });
+    segs.push({ ...r, x: offset, w, color: colors[i % colors.length] });
+    return offset + w;
+  }, 0);
   return (
     <div>
       <svg viewBox="0 0 100 14" className="h-8 w-full" preserveAspectRatio="none">
@@ -181,7 +180,7 @@ export default function TodayPlan({
     return () => window.clearInterval(iv);
   }, []);
 
-  const rows = useMemo(() => rowsFromPositions(positions), [positions, tick]);
+  const rows = useMemo(() => rowsFromPositions(positions), [positions]);
   const cost = rows.reduce((s, r) => s + r.avg * r.qty, 0);
   const value = rows.reduce((s, r) => s + r.mv, 0);
   const pnlUsd = value - cost;
@@ -193,23 +192,38 @@ export default function TodayPlan({
   const winners = rows.filter((r) => r.pnlPct > 0.15).sort((a, b) => b.pnlPct - a.pnlPct);
   const losers = rows.filter((r) => r.pnlPct < -0.15).sort((a, b) => a.pnlPct - b.pnlPct);
 
-  const msLeft = msToOpen();
-  const openLabel = countdown(msLeft);
+  // tick drives the second-resolution clock/countdown
+  const { openLabel, clockLabel } = useMemo(
+    () => ({ openLabel: countdown(msToOpen()), clockLabel: etClock() }),
+    [tick]
+  );
   const fusion = desk?.lastDecision;
   const fusionBroken =
-    fusion?.source === "nim_error" || fusion?.source === "nim_unavailable";
+    fusion?.source === "nim_error"
+    || fusion?.source === "nim_unavailable"
+    || fusion?.source === "nim_parse_error";
+
+  const quality = desk?.dayQuality || null;
+  const week = desk?.weekBand || null;
+  const engineDown =
+    fusionBroken
+    || quality?.verdict === "engine_down"
+    || desk?.engine?.healthy === false;
+  // A flat day only counts as discipline when the engine actually chose cash.
+  const flatByDecision = quality?.verdict === "flat_by_decision";
+  const cited = fusion?.used || [];
   const propose = desk?.state?.morningPlan?.proposeArm;
   const stagingSym =
     propose?.symbol || desk?.openBrief?.staging?.symbol || null;
 
   const trades: Array<{ action: string; detail: string; tone: "go" | "stop" | "wait" | "add" }> = [];
-  if (fusionBroken || desk?.refreshing) {
+  if (engineDown || desk?.refreshing) {
     trades.push({
-      action: fusionBroken ? "NO NEW BUYS" : "ANALYZING",
-      detail: fusionBroken
-        ? "Fusion timed out — agents stay cash on new risk until Analyze succeeds."
+      action: engineDown ? "ENGINE DOWN" : "ANALYZING",
+      detail: engineDown
+        ? "This is an outage, not a decision. Nothing was evaluated — fix the engine before trusting any flat day."
         : "Fusion is running — Staging will update when it finishes.",
-      tone: fusionBroken ? "stop" : "wait",
+      tone: engineDown ? "stop" : "wait",
     });
   } else if (fusion?.action?.startsWith("open_") && fusion.symbol) {
     trades.push({
@@ -253,13 +267,19 @@ export default function TodayPlan({
     });
   }
 
-  const answer =
-    desk?.openBrief?.answer
-    || (fusionBroken
-      ? `Make up ${holePct.toFixed(2)}% by protecting losers and trailing winners until fusion works — do not spray.`
-      : winners[0]
-        ? `Make up ${holePct.toFixed(2)}% by pressing ${winners.slice(0, 2).map((w) => w.symbol).join(" + ")}; protect ${losers.slice(0, 2).map((l) => l.symbol).join(", ") || "dead weight"}.`
-        : `Make up ${holePct.toFixed(2)}% after a clean fusion open — protect first.`);
+  // Weekly framing: the daily number is information, the WEEK is the target.
+  const weekHole = week?.holePct ?? null;
+  const weekPct = week?.weekPct ?? null;
+  const weekGoal = week?.goalPct ?? 1;
+
+  const answer = engineDown
+    ? "No plan today — the engine never produced a decision. A flat day right now is an outage, not discipline. Fix NIM, re-run Analyze, then judge the book."
+    : flatByDecision
+      ? `Flat by decision — the engine read the book ${quality?.decisions ?? 1}× and chose cash. That is a valid day. Week to date ${weekPct == null ? "pending" : fmtPct(weekPct)} vs +${weekGoal}% weekly band.`
+      : desk?.openBrief?.answer
+        || (winners[0]
+          ? `Press ${winners.slice(0, 2).map((w) => w.symbol).join(" + ")}; protect ${losers.slice(0, 2).map((l) => l.symbol).join(", ") || "dead weight"}. Weekly band, not today, is the target.`
+          : "Protect first; wait for a cited fusion call.");
 
   return (
     <section className="mb-6 overflow-hidden rounded-[1.75rem] border-2 border-[var(--teal-deep)] bg-white shadow-[var(--shadow)]">
@@ -267,11 +287,54 @@ export default function TodayPlan({
         <p className="text-xs font-semibold uppercase tracking-[0.2em]">
           Today&apos;s plan — your money
         </p>
-        <p className="text-xs opacity-90">
-          {etClock()} ET · {openLabel}
-          {desk?.refreshing ? " · analyzing…" : ""}
-        </p>
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          <span
+            className={clsx(
+              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-semibold",
+              engineDown
+                ? "bg-[var(--danger)] text-white"
+                : desk?.refreshing
+                  ? "bg-white/20 text-white"
+                  : "bg-[var(--ok)] text-white"
+            )}
+          >
+            {engineDown ? (
+              <AlertOctagon className="h-3.5 w-3.5" />
+            ) : (
+              <CheckCircle2 className="h-3.5 w-3.5" />
+            )}
+            Engine {engineDown ? "DOWN" : desk?.refreshing ? "thinking" : "OK"}
+          </span>
+          <span className="opacity-90">
+            {clockLabel} ET · {openLabel}
+          </span>
+        </div>
       </div>
+
+      {engineDown ? (
+        <div className="border-b border-rose-200 bg-rose-50 px-5 py-3">
+          <p className="text-sm font-semibold text-[var(--danger)]">
+            No decision was made — this is an outage, not discipline.
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-rose-950/80">
+            {desk?.engine?.note
+              || quality?.plain
+              || fusion?.why
+              || "The reasoning engine failed (timeout / unusable output). Nothing in the book was evaluated, so a flat day tells you nothing about the plan."}
+            {quality?.outages ? ` (${quality.outages} outage${quality.outages === 1 ? "" : "s"} today)` : ""}
+          </p>
+        </div>
+      ) : flatByDecision ? (
+        <div className="border-b border-teal-200 bg-teal-50 px-5 py-3">
+          <p className="flex items-center gap-2 text-sm font-semibold text-[var(--teal-deep)]">
+            <CheckCircle2 className="h-4 w-4" /> Flat by decision — this counts as a good day
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-teal-950/80">
+            {quality?.plain
+              || "The engine read the book and chose cash. No trade is a valid outcome when nothing earned risk."}
+          </p>
+        </div>
+      ) : null}
 
       <div className="grid gap-0 border-b border-[var(--line)] lg:grid-cols-4">
         <div className="border-b border-[var(--line)] px-5 py-4 lg:border-b-0 lg:border-r">
@@ -303,13 +366,30 @@ export default function TodayPlan({
         </div>
         <div className="border-b border-[var(--line)] px-5 py-4 lg:border-b-0 lg:border-r">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--ink-soft)]">
-            Hole to +{goalPct.toFixed(0)}%
+            Week to +{weekGoal}%
           </p>
-          <p className="display mt-1 text-3xl font-semibold text-[var(--danger)]">
-            {fmtPct(holePct)}
+          <p
+            className={clsx(
+              "display mt-1 text-3xl font-semibold",
+              weekPct == null
+                ? "text-[var(--ink-soft)]"
+                : weekPct >= weekGoal
+                  ? "text-[var(--ok)]"
+                  : "text-[var(--ink)]"
+            )}
+          >
+            {weekPct == null ? "—" : fmtPct(weekPct)}
           </p>
           <p className="mt-1 text-xs text-[var(--ink-soft)]">
-            Need ~{holeUsd == null ? "—" : fmtUsd(holeUsd)} more on this book
+            {weekPct == null
+              ? "Weekly band starts once equity marks record"
+              : weekHole && weekHole > 0
+                ? `${fmtPct(weekHole)} left this week — not today`
+                : "Weekly band met — protect it"}
+          </p>
+          <p className="mt-1 text-[11px] text-[var(--ink-soft)]">
+            Today {pnlPct == null ? "—" : fmtPct(pnlPct)}
+            {holeUsd != null && holePct > 0 ? ` · day gap ${fmtUsd(holeUsd)}` : ""}
           </p>
         </div>
         <div className="px-5 py-4">
@@ -335,8 +415,33 @@ export default function TodayPlan({
           <p className="mt-1 line-clamp-2 text-xs text-[var(--ink-soft)]">
             {(fusion?.why || desk?.openBrief?.plain || "Run Analyze for a trusted open list.").slice(0, 120)}
           </p>
+          {!engineDown ? (
+            <p className="mt-1 text-[11px] font-medium text-[var(--ink-soft)]">
+              {cited.length
+                ? `Cited ${cited.length} pack field${cited.length === 1 ? "" : "s"}`
+                : "No citations — call is unauditable"}
+            </p>
+          ) : null}
         </div>
       </div>
+
+      {cited.length ? (
+        <div className="border-b border-[var(--line)] bg-[var(--sand)]/30 px-5 py-3">
+          <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--teal)]">
+            <Quote className="h-3 w-3" /> What the agent actually used
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {cited.slice(0, 6).map((c) => (
+              <span
+                key={c}
+                className="mono rounded-md border border-[var(--line)] bg-white px-2 py-0.5 text-[11px] text-[var(--ink)]"
+              >
+                {c}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid gap-0 lg:grid-cols-2">
         <div className="border-b border-[var(--line)] px-5 py-4 lg:border-b-0 lg:border-r">
