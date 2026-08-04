@@ -7,7 +7,8 @@ import clsx from "clsx";
 import { fmtPct, fmtUsd } from "@/lib/desk";
 import type { RhLivePosition } from "@/lib/robinhood";
 
-const POLL_MS = 8_000;
+/** Slower than RH Agentic comfort — desk-day fusion already burns quota. */
+const POLL_MS = 15_000;
 
 export type ProtectHeldInput = {
   symbol: string;

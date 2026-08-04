@@ -167,17 +167,17 @@ export default function DeskBoard() {
     try {
       const data = await fetchLivePositions();
       if (!data.ok) {
+        // Keep last book on screen — don't flash empty on transient 502/429.
         setPositionsError(data.error || "Could not load positions");
-        setLivePositions([]);
         return data;
       }
       setLivePositions(data.positions);
+      // Soft stale/rate-limit is not a hard failure — keep the book, clear banner.
       setPositionsError(null);
       setPositionsTickAt(Date.now());
       return data;
     } catch (e) {
       setPositionsError((e as Error).message);
-      setLivePositions([]);
       return null;
     } finally {
       setPositionsLoading(false);

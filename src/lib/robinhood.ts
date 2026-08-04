@@ -53,25 +53,24 @@ function extractPositionRows(payload: unknown): Record<string, unknown>[] {
   return [];
 }
 
-/** Live Agentic equity holdings — independent of desk-day state. */
-export async function fetchLivePositions(): Promise<{
+type LivePositionsResult = {
   ok: boolean;
   positions: RhLivePosition[];
   buyingPower: number | null;
   accountNumber?: string | null;
   error?: string;
-}> {
-  const res = await fetch("/api/robinhood?action=portfolio", { cache: "no-store" });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || data.error) {
-    return {
-      ok: false,
-      positions: [],
-      buyingPower: null,
-      error: String(data.error || `HTTP ${res.status}`),
-    };
-  }
+  stale?: boolean;
+  warning?: string;
+};
 
+/** Last good book — keep showing holds through RH rate limits / proxy blips. */
+let _lastGoodPositions: LivePositionsResult | null = null;
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function parsePositionsPayload(data: Record<string, unknown>): LivePositionsResult {
   const rows = extractPositionRows(data.positions);
   const quoteMarks = (data.quote_marks || {}) as Record<string, number>;
   const positions: RhLivePosition[] = [];
@@ -133,17 +132,124 @@ export async function fetchLivePositions(): Promise<{
     (a, b) => Math.abs(b.marketValue || 0) - Math.abs(a.marketValue || 0)
   );
 
-  const port = data.portfolio?.parsed?.data || data.portfolio?.parsed || data.portfolio?.data || {};
-  const nested = port.data || port;
+  const port =
+    (data.portfolio as Record<string, unknown> | undefined)?.parsed as
+      | Record<string, unknown>
+      | undefined;
+  const portRoot =
+    (port?.data as Record<string, unknown> | undefined) ||
+    port ||
+    (data.portfolio as Record<string, unknown> | undefined)?.data ||
+    {};
+  const nested =
+    ((portRoot as Record<string, unknown>).data as Record<string, unknown> | undefined) ||
+    (portRoot as Record<string, unknown>);
+  const bpObj = nested?.buying_power as Record<string, unknown> | number | undefined;
   const bpRaw =
-    nested?.buying_power?.buying_power ?? nested?.buying_power ?? nested?.unleveraged_buying_power;
+    (typeof bpObj === "object" && bpObj ? bpObj.buying_power : bpObj) ??
+    nested?.buying_power ??
+    nested?.unleveraged_buying_power;
   const buyingPower = bpRaw != null && Number.isFinite(Number(bpRaw)) ? Number(bpRaw) : null;
 
   return {
     ok: true,
     positions,
     buyingPower,
-    accountNumber: data.account_number || null,
+    accountNumber: (data.account_number as string | null) || null,
+    stale: Boolean(data.stale),
+    warning: data.warning ? String(data.warning) : undefined,
+  };
+}
+
+function isRateLimitedPayload(data: Record<string, unknown>, status: number) {
+  if (status === 429) return true;
+  if (String(data.code || "") === "RATE_LIMITED") return true;
+  if (/RATE_LIMITED|rate.?limit|too many requests/i.test(String(data.error || ""))) return true;
+  if (String(data.warning || "") === "RATE_LIMITED") return true;
+  const pos = data.positions as Record<string, unknown> | undefined;
+  const cat = (pos?.raw as Record<string, unknown> | undefined)?._meta as
+    | Record<string, unknown>
+    | undefined;
+  return cat?.rh_error_category === "rate_limited";
+}
+
+async function fetchPortfolioRaw(): Promise<{
+  status: number;
+  data: Record<string, unknown>;
+}> {
+  const res = await fetch("/api/robinhood?action=portfolio", { cache: "no-store" });
+  const text = await res.text();
+  if (!text.trim()) {
+    return {
+      status: res.status || 502,
+      data: { ok: false, error: `Empty response (${res.status})` },
+    };
+  }
+  try {
+    return { status: res.status, data: JSON.parse(text) as Record<string, unknown> };
+  } catch {
+    return {
+      status: res.status || 502,
+      data: { ok: false, error: `Invalid JSON (${res.status})` },
+    };
+  }
+}
+
+/** Live Agentic equity holdings — independent of desk-day state. */
+export async function fetchLivePositions(): Promise<LivePositionsResult> {
+  let last: { status: number; data: Record<string, unknown> } | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    last = await fetchPortfolioRaw();
+    const { status, data } = last;
+    const rateLimited = isRateLimitedPayload(data, status);
+
+    // Swarm may return stale=true + ok positions while RH is throttling.
+    if (data.ok !== false && !data.error && (status < 400 || data.stale)) {
+      const parsed = parsePositionsPayload(data);
+      if (parsed.positions.length > 0 || !rateLimited) {
+        if (parsed.positions.length > 0) _lastGoodPositions = parsed;
+        return parsed;
+      }
+    }
+
+    if (rateLimited && _lastGoodPositions) {
+      return {
+        ..._lastGoodPositions,
+        ok: true,
+        stale: true,
+        warning: "RATE_LIMITED",
+        error: undefined,
+      };
+    }
+
+    const retryable = rateLimited || status === 502 || status === 503 || status === 504;
+    if (retryable && attempt === 0) {
+      await sleep(700);
+      continue;
+    }
+
+    if (_lastGoodPositions && (rateLimited || status >= 500)) {
+      return {
+        ..._lastGoodPositions,
+        ok: true,
+        stale: true,
+        warning: String(data.error || data.warning || `HTTP ${status}`),
+      };
+    }
+
+    return {
+      ok: false,
+      positions: [],
+      buyingPower: null,
+      error: String(data.error || `HTTP ${status}`),
+    };
+  }
+
+  return {
+    ok: false,
+    positions: [],
+    buyingPower: null,
+    error: String(last?.data?.error || "Could not load positions"),
   };
 }
 
