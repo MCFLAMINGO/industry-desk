@@ -34,6 +34,8 @@ export type RhLivePosition = {
   marketValue: number | null;
   /** Last trade / mark from Agentic portfolio when present. */
   lastPrice: number | null;
+  /** Session / day change in percent points when RH provides it (e.g. +3.02). */
+  dayChangePct?: number | null;
 };
 
 function extractPositionRows(payload: unknown): Record<string, unknown>[] {
@@ -71,6 +73,7 @@ export async function fetchLivePositions(): Promise<{
   }
 
   const rows = extractPositionRows(data.positions);
+  const quoteMarks = (data.quote_marks || {}) as Record<string, number>;
   const positions: RhLivePosition[] = [];
   for (const row of rows) {
     const instrument = row.instrument as Record<string, unknown> | undefined;
@@ -80,27 +83,50 @@ export async function fetchLivePositions(): Promise<{
     if (!sym || !Number.isFinite(qty) || qty === 0) continue;
     const avg = Number(row.average_buy_price ?? row.avg_cost ?? row.average_price);
     const mkt = Number(row.market_value ?? row.equity ?? row.value);
+    // Prefer extended / overnight prints after the regular session closes.
     const last = Number(
-      row.last_trade_price
+      row.last_non_reg_trade_price
+        ?? row.extended_hours_price
+        ?? row.overnight_price
+        ?? row.last_extend_hours_trade_price
         ?? row.mark_price
         ?? row.adjusted_mark_price
+        ?? row.last_trade_price
         ?? row.price
         ?? row.last_price
+        ?? instrument?.last_non_reg_trade_price
         ?? instrument?.last_trade_price
         ?? stock?.last_trade_price
+        ?? row.quote_last_price
     );
+    const fromQuoteBatch = Number(quoteMarks[sym]);
     const lastPrice = Number.isFinite(last)
       ? last
-      : Number.isFinite(mkt) && qty
-        ? mkt / Math.abs(qty)
-        : null;
+      : Number.isFinite(fromQuoteBatch) && fromQuoteBatch > 0
+        ? fromQuoteBatch
+        : Number.isFinite(mkt) && qty
+          ? mkt / Math.abs(qty)
+          : null;
+    // Prefer quote-batch mark after hours when portfolio last_trade is stale RTH.
+    const mark =
+      Number.isFinite(fromQuoteBatch) && fromQuoteBatch > 0
+        ? fromQuoteBatch
+        : lastPrice;
+    const dayChg = Number(
+      row.percent_change
+        ?? row.percentage_change
+        ?? row.day_change_percent
+        ?? row.total_return_today_percent
+        ?? instrument?.percent_change
+    );
     positions.push({
       symbol: sym,
       quantity: qty,
       side: qty < 0 ? "short" : "long",
       avgCost: Number.isFinite(avg) ? avg : null,
       marketValue: Number.isFinite(mkt) ? mkt : null,
-      lastPrice,
+      lastPrice: mark,
+      dayChangePct: Number.isFinite(dayChg) ? dayChg : null,
     });
   }
   positions.sort(

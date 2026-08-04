@@ -34,10 +34,14 @@ function resolveMark(
   p: RhLivePosition,
   markBySymbol?: Record<string, number | null | undefined>
 ): number | null {
+  // Portfolio / quote poll first — desk rankings freeze after the session closes.
+  if (p.lastPrice != null && Number.isFinite(p.lastPrice)) return p.lastPrice;
+  if (p.marketValue != null && p.quantity) {
+    const fromMv = p.marketValue / Math.abs(p.quantity);
+    if (Number.isFinite(fromMv) && fromMv > 0) return fromMv;
+  }
   const fromTape = markBySymbol?.[p.symbol];
   if (fromTape != null && Number.isFinite(fromTape)) return Number(fromTape);
-  if (p.lastPrice != null && Number.isFinite(p.lastPrice)) return p.lastPrice;
-  if (p.marketValue != null && p.quantity) return p.marketValue / Math.abs(p.quantity);
   return null;
 }
 
@@ -123,9 +127,9 @@ export default function LivePositionsRail({
             <span className="live-pill mono normal-case tracking-normal">tape live</span>
           </p>
           <p className="mt-1 text-sm text-[var(--ink-soft)]">
-            Holdings are not a strategy until protected.{" "}
+            Agentic holdings first — portfolio + RH quotes (incl. after-hours).{" "}
             <span className="font-medium text-[var(--ink)]">Protect</span> arms stop (~1.5%) +
-            trail + EOD exit — no new buy. Marks refresh every {POLL_MS / 1000}s.
+            trail. Marks refresh every {POLL_MS / 1000}s; P&L is vs your avg cost (not the RH day %).
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-[var(--ink-soft)]">
             <span className="mono">
@@ -229,6 +233,20 @@ export default function LivePositionsRail({
                     <>
                       {" "}
                       · <span className="mono">{fmtUsd(p.marketValue)}</span>
+                    </>
+                  ) : null}
+                  {p.dayChangePct != null ? (
+                    <>
+                      {" "}
+                      · day{" "}
+                      <span
+                        className={clsx(
+                          "mono font-semibold",
+                          p.dayChangePct >= 0 ? "text-emerald-800" : "text-amber-900"
+                        )}
+                      >
+                        {fmtPct(p.dayChangePct)}
+                      </span>
                     </>
                   ) : null}
                   {pnlPct != null ? (

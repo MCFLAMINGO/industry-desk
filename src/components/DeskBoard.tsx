@@ -314,7 +314,11 @@ export default function DeskBoard() {
         side: p.side || "long",
         avgCost: p.avgCost ?? null,
         marketValue: p.marketValue ?? null,
-        lastPrice: null,
+        lastPrice: p.mark != null && Number.isFinite(Number(p.mark)) ? Number(p.mark) : null,
+        dayChangePct:
+          p.changePct != null && Number.isFinite(Number(p.changePct))
+            ? Number(p.changePct)
+            : null,
       });
     }
     for (const p of fromLive) merged.set(p.symbol, p);
@@ -325,11 +329,27 @@ export default function DeskBoard() {
 
   const markBySymbol = useMemo(() => {
     const out: Record<string, number | null | undefined> = {};
+    // Rankings are a fallback only — they freeze when the desk idles after close.
     for (const r of desk?.state?.rankings || []) {
       out[r.symbol.toUpperCase()] = r.price;
     }
+    for (const p of desk?.state?.rhActivity?.positions || []) {
+      if (p.mark != null && Number.isFinite(Number(p.mark))) {
+        out[String(p.symbol).toUpperCase()] = Number(p.mark);
+      }
+    }
+    // Live portfolio poll always wins when present.
+    for (const p of livePositions) {
+      const px =
+        p.lastPrice != null && Number.isFinite(p.lastPrice)
+          ? p.lastPrice
+          : p.marketValue != null && p.quantity
+            ? p.marketValue / Math.abs(p.quantity)
+            : null;
+      if (px != null && Number.isFinite(px) && px > 0) out[p.symbol] = px;
+    }
     return out;
-  }, [desk]);
+  }, [desk, livePositions]);
 
   const sodSteps = useMemo(
     () =>
