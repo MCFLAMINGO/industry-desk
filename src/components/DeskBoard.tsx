@@ -379,6 +379,35 @@ export default function DeskBoard() {
         ) : null}
       </motion.div>
 
+      {desk?.lastDecision ? (
+        <div className="mb-6 rounded-3xl border border-[var(--line)] bg-white/70 px-4 py-3 text-sm text-[var(--ink)]">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--teal)]">
+            Fusion decision
+            {desk.lastDecision.action ? (
+              <span className="mono ml-2 normal-case tracking-normal text-[var(--ink)]">
+                {desk.lastDecision.action}
+                {desk.lastDecision.symbol ? ` · ${desk.lastDecision.symbol}` : ""}
+                {desk.lastDecision.confidence != null
+                  ? ` · ${Math.round(desk.lastDecision.confidence * 100)}%`
+                  : ""}
+              </span>
+            ) : null}
+          </p>
+          <p className="mt-1.5 leading-relaxed text-[var(--ink-soft)]">
+            {desk.lastDecision.why || "No why returned."}
+          </p>
+          {desk.lastDecision.contextBytes != null ? (
+            <p className="mt-1 text-xs text-[var(--ink-soft)]">
+              Packed {Math.round(desk.lastDecision.contextBytes / 1024)} KB desk state
+              {desk.lastDecision.duration_ms != null
+                ? ` · decided in ${desk.lastDecision.duration_ms}ms`
+                : ""}
+              {" · NIM fusion (not uptape script)"}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="mb-8 flex flex-wrap items-center gap-2">
         {DESK_BOOKS.map((b) => {
           const active = (book || "all") === b.id;

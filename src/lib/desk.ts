@@ -248,9 +248,26 @@ export type DeskDayState = {
     isAfterClose?: boolean;
   };
   dayGoal?: { min?: number; stretch?: number };
+  dayPnlPctEst?: number | null;
+  dayPeakPnlPct?: number | null;
+  dayGoalHit?: boolean;
+  bankMode?: boolean;
+  /** Latest NIM fusion entry decision (not a tape scoreboard). */
+  lastDecision?: {
+    action?: string;
+    symbol?: string | null;
+    why?: string;
+    horizon?: string;
+    instrument?: string | null;
+    confidence?: number;
+    kill?: string[];
+    source?: string;
+    contextBytes?: number;
+    duration_ms?: number;
+  } | null;
   autoExecute?: boolean;
   autoLive?: boolean;
-  fiduciary?: { note?: string; maxLive?: number };
+  fiduciary?: { note?: string; maxLive?: number; entry?: string };
   universe?: {
     size?: number;
     books?: Array<{
