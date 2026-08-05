@@ -119,6 +119,15 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "arm-plan");
+    const deskSlotActions = new Set([
+      "desk-slot",
+      "take-hunt",
+      "fire-hunt",
+      "release",
+      "hunt",
+      "hunt-options",
+      "score-option",
+    ]);
     const path =
       action === "execute"
         ? "/api/ceo/execute"
@@ -136,12 +145,12 @@ export async function POST(req: NextRequest) {
                     ? "/api/ceo/desk-regime"
                     : action === "desk-risk-off"
                       ? "/api/ceo/desk-risk-off"
-                      : action === "desk-slot" || action === "take-hunt" || action === "fire-hunt"
+                      : deskSlotActions.has(action)
                         ? "/api/ceo/desk-slot"
                         : "/api/ceo/arm-plan";
-    // desk-day / regime / hunt fire can be slow (RH chain + NIM).
+    // desk-day / regime / hunt fire can be slow (RH options + NIM).
     const timeoutMs =
-      action === "desk-day" || action === "desk-regime" || action === "desk-slot" || action === "take-hunt" || action === "fire-hunt"
+      action === "desk-day" || action === "desk-regime" || deskSlotActions.has(action)
         ? 45_000
         : POST_TIMEOUT_MS;
     return await proxy(

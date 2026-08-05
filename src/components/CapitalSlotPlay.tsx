@@ -6,6 +6,7 @@ import { Crosshair, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   fetchOpenBook,
+  releaseCapitalSlot,
   takeOptionHunt,
   type DeskDayState,
   type DeskPlan,
@@ -181,6 +182,28 @@ export default function CapitalSlotPlay({ desk, busy, onChanged }: Props) {
               >
                 {firing === "live" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Crosshair className="h-3.5 w-3.5" />}
                 Take LIVE
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(busy || firing)}
+                onClick={() => {
+                  void (async () => {
+                    try {
+                      const out = await releaseCapitalSlot({
+                        symbol: String(slot!.symbol),
+                        reason: "owner_clear_ghost",
+                      });
+                      if (!out.ok) throw new Error(out.error || "Release failed");
+                      toast.success(`Cleared ${slot!.symbol} from capital slot`);
+                      await onChanged?.();
+                    } catch (e) {
+                      toast.error("Clear failed", { description: (e as Error).message });
+                    }
+                  })();
+                }}
+                className="inline-flex items-center justify-center rounded-full border border-[var(--line)] px-3 py-1.5 text-xs font-medium text-[var(--ink-soft)] disabled:opacity-50"
+              >
+                Clear ghost
               </button>
             </>
           ) : (

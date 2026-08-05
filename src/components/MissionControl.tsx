@@ -2,19 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
-import { Activity, Target, Clock, AlertTriangle, RefreshCw, Anchor, Radio, Crosshair } from "lucide-react";
+import { Activity, Target, Clock, AlertTriangle, RefreshCw, Anchor, Radio } from "lucide-react";
 import { toast } from "sonner";
 import {
   fmtPct,
   fmtUsd,
   runDeskRiskOff,
   runRegimePass,
-  takeOptionHunt,
   type DeskDayState,
   type DeskRank,
   type DeskRegime,
 } from "@/lib/desk";
 import type { RhLivePosition } from "@/lib/robinhood";
+import OptionHuntControls from "@/components/OptionHuntControls";
 
 type Props = {
   desk: DeskDayState | null;
@@ -52,7 +52,11 @@ function minsUntil(etHour: number, etMinute: number, et: DeskDayState["et"]) {
   return target - now;
 }
 
-function sessionPlain(et: DeskDayState["et"], refreshing?: boolean) {
+function sessionPlain(
+  et: DeskDayState["et"],
+  refreshing?: boolean,
+  deskMissing?: boolean
+) {
   if (refreshing) {
     return {
       label: "Analyzing now",
@@ -60,8 +64,14 @@ function sessionPlain(et: DeskDayState["et"], refreshing?: boolean) {
       tone: "go" as const,
     };
   }
-  if (!et) {
-    return { label: "Loading session…", detail: "Waiting on desk clock.", tone: "wait" as const };
+  if (deskMissing || !et) {
+    return {
+      label: deskMissing ? "Desk not loaded" : "Loading session…",
+      detail: deskMissing
+        ? "Mission Control has no desk-day payload — refresh the page / Analyze. Auto flags and fusion look blank until then."
+        : "Waiting on desk clock.",
+      tone: "wait" as const,
+    };
   }
   if (et.isRth) {
     return {
@@ -128,6 +138,13 @@ function skipPlain(reason?: string) {
 
 function fusionPlain(desk: DeskDayState | null) {
   const ld = desk?.lastDecision;
+  if (!desk) {
+    return {
+      status: "Desk offline in UI",
+      line: "No desk-day JSON reached the browser. Hard refresh. Backend may still have a fusion call and capital slot.",
+      ok: false,
+    };
+  }
   if (desk?.refreshing) {
     return {
       status: "Thinking",
@@ -239,7 +256,6 @@ export default function MissionControl({
   const [nowTick, setNowTick] = useState(0);
   const [regimeBusy, setRegimeBusy] = useState(false);
   const [riskBusy, setRiskBusy] = useState(false);
-  const [huntBusy, setHuntBusy] = useState<"preview" | "live" | null>(null);
   const [localRegime, setLocalRegime] = useState<DeskRegime | null>(null);
   const [showRegimeDetail, setShowRegimeDetail] = useState(false);
   useEffect(() => {
@@ -250,7 +266,7 @@ export default function MissionControl({
   const bookPnlPct = useMemo(() => bookPnlFromPositions(positions), [positions, nowTick]);
   const goalMin = (desk?.dayGoal?.min || 0.01) * 100;
   const goalStretch = (desk?.dayGoal?.stretch || 0.03) * 100;
-  const session = sessionPlain(desk?.et, Boolean(desk?.refreshing || busy));
+  const session = sessionPlain(desk?.et, Boolean(desk?.refreshing || busy), !desk);
   const fusion = fusionPlain(desk);
   const openLine = atOpenPlain(desk, bookPnlPct);
   const regime = localRegime || desk?.regime || null;
@@ -361,6 +377,34 @@ export default function MissionControl({
               {" · not an auto-buy until fusion/Approve says so"}
             </p>
           )}
+          {desk?.capitalSlot?.incumbent?.symbol ? (
+            <div className="mt-3 rounded-xl border-2 border-[var(--teal-deep)] bg-[var(--teal)]/10 px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--teal-deep)]">
+                The play · capital slot
+                {desk.capitalSlot.incumbent.live ? " · LIVE" : " · DRY / not filled"}
+              </p>
+              <p className="mt-1 text-sm font-semibold text-[var(--ink)]">
+                {desk.capitalSlot.incumbent.symbol}{" "}
+                {String(desk.capitalSlot.incumbent.right || "call").toUpperCase()}
+                {desk.capitalSlot.incumbent.contract?.strike != null
+                  ? ` $${desk.capitalSlot.incumbent.contract.strike}`
+                  : ""}
+                {desk.capitalSlot.incumbent.planId
+                  ? ` · plan ${String(desk.capitalSlot.incumbent.planId).slice(0, 8)}`
+                  : ""}
+              </p>
+              <p className="mt-0.5 text-xs text-[var(--ink-soft)]">
+                {desk.capitalSlot.incumbent.live
+                  ? "Armed in the one risk sleeve — also on Play-by-play below."
+                  : "Paper/dry only — not a filled option. Scroll to The play above Staging, or Take LIVE (needs buying power for the debit)."}
+              </p>
+            </div>
+          ) : (
+            <p className="mt-3 text-xs text-[var(--ink-soft)]">
+              Capital slot empty — no live option sleeve is armed. Take LIVE on Option hunt needs
+              ~$20–$50 BP (you have {fmtUsd(buyingPower)}).
+            </p>
+          )}
           {desk?.optionHunt?.best ? (
             <div className="mt-3 rounded-xl border border-[var(--line)] bg-[var(--sand)]/70 px-3 py-2">
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--teal-deep)]">
@@ -387,75 +431,13 @@ export default function MissionControl({
                   : desk.optionHunt.note
                     || "Scanning; nothing cleared the gate this pass."}
               </p>
-              {desk.optionHunt.best.tradeable ? (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={Boolean(busy || huntBusy || desk?.refreshing)}
-                    onClick={() => {
-                      void (async () => {
-                        setHuntBusy("preview");
-                        try {
-                          const out = await takeOptionHunt({
-                            live: false,
-                            best: desk.optionHunt?.best,
-                          });
-                          if (!out.ok) {
-                            throw new Error(out.detail || out.reason || out.error || "Preview failed");
-                          }
-                          toast.success("Hunt preview armed", {
-                            description: out.message || `${out.instrument} ${out.symbol}`,
-                          });
-                          await onHuntFired?.();
-                        } catch (e) {
-                          toast.error("Preview failed", { description: (e as Error).message });
-                        } finally {
-                          setHuntBusy(null);
-                        }
-                      })();
-                    }}
-                    className="inline-flex items-center gap-1 rounded-full border border-[var(--teal-deep)]/40 bg-white px-2.5 py-1 text-[11px] font-semibold text-[var(--teal-deep)] disabled:opacity-50"
-                  >
-                    <Crosshair className="h-3 w-3" />
-                    {huntBusy === "preview" ? "Arming…" : "Preview"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={Boolean(busy || huntBusy || desk?.refreshing)}
-                    onClick={() => {
-                      const b = desk.optionHunt?.best;
-                      if (!b) return;
-                      const ok = window.confirm(
-                        `Take LIVE ${b.symbol} ${String(b.right || "call").toUpperCase()}`
-                          + (b.strike != null ? ` $${b.strike}` : "")
-                          + "?"
-                      );
-                      if (!ok) return;
-                      void (async () => {
-                        setHuntBusy("live");
-                        try {
-                          const out = await takeOptionHunt({ live: true, best: b });
-                          if (!out.ok) {
-                            throw new Error(out.detail || out.reason || out.error || "Take failed");
-                          }
-                          toast.success("Hunt LIVE armed", {
-                            description: out.message || `${out.instrument} ${out.symbol}`,
-                          });
-                          await onHuntFired?.();
-                        } catch (e) {
-                          toast.error("Take LIVE failed", { description: (e as Error).message });
-                        } finally {
-                          setHuntBusy(null);
-                        }
-                      })();
-                    }}
-                    className="inline-flex items-center gap-1 rounded-full bg-[var(--teal-deep)] px-2.5 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
-                  >
-                    <Crosshair className="h-3 w-3" />
-                    {huntBusy === "live" ? "Firing…" : "Take LIVE"}
-                  </button>
-                </div>
-              ) : null}
+              <OptionHuntControls
+                desk={desk}
+                buyingPower={buyingPower}
+                busy={busy}
+                compact
+                onFired={onHuntFired}
+              />
             </div>
           ) : null}
         </div>

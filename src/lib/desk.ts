@@ -867,6 +867,20 @@ export async function runDeskPass(live = false): Promise<DeskDayState> {
   }
 }
 
+/** Release a capital-slot occupant (clears dry ghosts that block Take LIVE). */
+export async function releaseCapitalSlot(input: { symbol: string; reason?: string }) {
+  const res = await fetch("/api/ceo", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "release",
+      symbol: input.symbol,
+      reason: input.reason || "owner_clear",
+    }),
+  });
+  return readJson(res) as Promise<{ ok?: boolean; released?: string; error?: string; used?: number }>;
+}
+
 /** Owner Take / Preview — fire the tradeable option-hunt sleeve into the capital slot. */
 export async function takeOptionHunt(input: {
   live: boolean;
@@ -885,7 +899,7 @@ export async function takeOptionHunt(input: {
       why: why || undefined,
     }),
   });
-  return readJson(res) as Promise<{
+  const data = (await readJson(res)) as {
     ok?: boolean;
     mode?: string;
     symbol?: string;
@@ -896,7 +910,20 @@ export async function takeOptionHunt(input: {
     error?: string;
     reason?: string;
     detail?: string;
-  }>;
+    openBlocked?: boolean;
+    openDetail?: string;
+  };
+  if (res.status >= 500) {
+    throw new Error(
+      String(data.message || data.error || `Desk API ${res.status} — Take LIVE did not complete`)
+    );
+  }
+  if (data.openBlocked && data.ok) {
+    data.message =
+      data.message
+      || `Armed in slot but open blocked (${data.openDetail || "NO_AFFORDABLE_OPTION"}) — add buying power.`;
+  }
+  return data;
 }
 
 export async function armDeskPlay(input: {
