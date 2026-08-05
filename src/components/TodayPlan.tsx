@@ -267,6 +267,25 @@ export default function TodayPlan({
     });
   }
 
+  const hunt = desk?.optionHunt;
+  const huntBest = hunt?.best;
+  if (huntBest?.symbol && huntBest.tradeable) {
+    trades.unshift({
+      action: `OPTION HUNT ${huntBest.symbol} ${String(huntBest.right || "call").toUpperCase()}`,
+      detail: [
+        huntBest.strike != null ? `$${huntBest.strike}` : null,
+        huntBest.debitUsd != null ? `~$${Math.round(huntBest.debitUsd)} debit` : null,
+        huntBest.upsideMultiple != null ? `~${huntBest.upsideMultiple}× on a typical move` : null,
+        fusion?.action === "pass"
+          ? "Found — fusion still chose cash; sleeve is sized/capped if taken."
+          : "Tradeable asymmetric sleeve from the board hunt.",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      tone: "add",
+    });
+  }
+
   // Weekly framing: the daily number is information, the WEEK is the target.
   const weekHole = week?.holePct ?? null;
   const weekPct = week?.weekPct ?? null;
@@ -440,6 +459,33 @@ export default function TodayPlan({
               </span>
             ))}
           </div>
+        </div>
+      ) : null}
+
+      {huntBest?.symbol ? (
+        <div className="border-b border-[var(--line)] bg-[var(--teal)]/8 px-5 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--teal-deep)]">
+            Option hunt
+            {hunt?.tradeableCount ? ` · ${hunt.tradeableCount} tradeable` : ""}
+            {hunt?.scanned != null ? ` · scanned ${hunt.scanned}` : ""}
+          </p>
+          <p className="mt-1 text-sm font-semibold text-[var(--ink)]">
+            {huntBest.symbol} {String(huntBest.right || "").toUpperCase()}
+            {huntBest.strike != null ? ` $${huntBest.strike}` : ""}
+            {huntBest.expiration ? ` · ${String(huntBest.expiration).slice(0, 10)}` : ""}
+            {huntBest.debitUsd != null ? ` · ~$${Math.round(Number(huntBest.debitUsd))} debit` : ""}
+            {huntBest.upsideMultiple != null
+              ? ` · ~${huntBest.upsideMultiple}× on a typical move`
+              : ""}
+            {huntBest.tradeable ? " · TRADEABLE" : " · not cleared"}
+          </p>
+          <p className="mt-0.5 text-xs text-[var(--ink-soft)]">
+            {huntBest.tradeable
+              ? huntBest.plain
+                || hunt?.note
+                || "Board hunt found an asymmetric sleeve — fusion still has to choose open_call/put."
+              : hunt?.note || "Scanning; nothing cleared the gate this pass."}
+          </p>
         </div>
       ) : null}
 
