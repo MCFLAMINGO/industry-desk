@@ -52,7 +52,11 @@ function minsUntil(etHour: number, etMinute: number, et: DeskDayState["et"]) {
   return target - now;
 }
 
-function sessionPlain(et: DeskDayState["et"], refreshing?: boolean) {
+function sessionPlain(
+  et: DeskDayState["et"],
+  refreshing?: boolean,
+  deskMissing?: boolean
+) {
   if (refreshing) {
     return {
       label: "Analyzing now",
@@ -60,8 +64,14 @@ function sessionPlain(et: DeskDayState["et"], refreshing?: boolean) {
       tone: "go" as const,
     };
   }
-  if (!et) {
-    return { label: "Loading session…", detail: "Waiting on desk clock.", tone: "wait" as const };
+  if (deskMissing || !et) {
+    return {
+      label: deskMissing ? "Desk not loaded" : "Loading session…",
+      detail: deskMissing
+        ? "Mission Control has no desk-day payload — refresh the page / Analyze. Auto flags and fusion look blank until then."
+        : "Waiting on desk clock.",
+      tone: "wait" as const,
+    };
   }
   if (et.isRth) {
     return {
@@ -128,6 +138,13 @@ function skipPlain(reason?: string) {
 
 function fusionPlain(desk: DeskDayState | null) {
   const ld = desk?.lastDecision;
+  if (!desk) {
+    return {
+      status: "Desk offline in UI",
+      line: "No desk-day JSON reached the browser. Hard refresh. Backend may still have a fusion call and capital slot.",
+      ok: false,
+    };
+  }
   if (desk?.refreshing) {
     return {
       status: "Thinking",
@@ -250,7 +267,7 @@ export default function MissionControl({
   const bookPnlPct = useMemo(() => bookPnlFromPositions(positions), [positions, nowTick]);
   const goalMin = (desk?.dayGoal?.min || 0.01) * 100;
   const goalStretch = (desk?.dayGoal?.stretch || 0.03) * 100;
-  const session = sessionPlain(desk?.et, Boolean(desk?.refreshing || busy));
+  const session = sessionPlain(desk?.et, Boolean(desk?.refreshing || busy), !desk);
   const fusion = fusionPlain(desk);
   const openLine = atOpenPlain(desk, bookPnlPct);
   const regime = localRegime || desk?.regime || null;
@@ -361,6 +378,34 @@ export default function MissionControl({
               {" · not an auto-buy until fusion/Approve says so"}
             </p>
           )}
+          {desk?.capitalSlot?.incumbent?.symbol ? (
+            <div className="mt-3 rounded-xl border-2 border-[var(--teal-deep)] bg-[var(--teal)]/10 px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--teal-deep)]">
+                The play · capital slot
+                {desk.capitalSlot.incumbent.live ? " · LIVE" : " · DRY / not filled"}
+              </p>
+              <p className="mt-1 text-sm font-semibold text-[var(--ink)]">
+                {desk.capitalSlot.incumbent.symbol}{" "}
+                {String(desk.capitalSlot.incumbent.right || "call").toUpperCase()}
+                {desk.capitalSlot.incumbent.contract?.strike != null
+                  ? ` $${desk.capitalSlot.incumbent.contract.strike}`
+                  : ""}
+                {desk.capitalSlot.incumbent.planId
+                  ? ` · plan ${String(desk.capitalSlot.incumbent.planId).slice(0, 8)}`
+                  : ""}
+              </p>
+              <p className="mt-0.5 text-xs text-[var(--ink-soft)]">
+                {desk.capitalSlot.incumbent.live
+                  ? "Armed in the one risk sleeve — also on Play-by-play below."
+                  : "Paper/dry only — not a filled option. Scroll to The play above Staging, or Take LIVE (needs buying power for the debit)."}
+              </p>
+            </div>
+          ) : (
+            <p className="mt-3 text-xs text-[var(--ink-soft)]">
+              Capital slot empty — no live option sleeve is armed. Take LIVE on Option hunt needs
+              ~$20–$50 BP (you have {fmtUsd(buyingPower)}).
+            </p>
+          )}
           {desk?.optionHunt?.best ? (
             <div className="mt-3 rounded-xl border border-[var(--line)] bg-[var(--sand)]/70 px-3 py-2">
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--teal-deep)]">
@@ -425,9 +470,18 @@ export default function MissionControl({
                     onClick={() => {
                       const b = desk.optionHunt?.best;
                       if (!b) return;
+                      const debit = b.debitUsd != null ? Math.round(Number(b.debitUsd)) : null;
+                      const bp = buyingPower != null ? Number(buyingPower) : null;
+                      if (bp != null && debit != null && bp < debit) {
+                        toast.error("Not enough buying power for LIVE option", {
+                          description: `Need ~$${debit} debit · BP ${fmtUsd(bp)}. Deposit or free cash first — prior Takes were dry/paper, not fills.`,
+                        });
+                        return;
+                      }
                       const ok = window.confirm(
                         `Take LIVE ${b.symbol} ${String(b.right || "call").toUpperCase()}`
                           + (b.strike != null ? ` $${b.strike}` : "")
+                          + (debit != null ? ` · ~$${debit} debit` : "")
                           + "?"
                       );
                       if (!ok) return;

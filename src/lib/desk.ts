@@ -867,6 +867,20 @@ export async function runDeskPass(live = false): Promise<DeskDayState> {
   }
 }
 
+/** Release a capital-slot occupant (clears dry ghosts that block Take LIVE). */
+export async function releaseCapitalSlot(input: { symbol: string; reason?: string }) {
+  const res = await fetch("/api/ceo", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "release",
+      symbol: input.symbol,
+      reason: input.reason || "owner_clear",
+    }),
+  });
+  return readJson(res) as Promise<{ ok?: boolean; released?: string; error?: string; used?: number }>;
+}
+
 /** Owner Take / Preview — fire the tradeable option-hunt sleeve into the capital slot. */
 export async function takeOptionHunt(input: {
   live: boolean;
