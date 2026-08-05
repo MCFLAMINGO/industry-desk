@@ -510,6 +510,10 @@ export default function DeskBoard() {
         buyingPower={buyingPower}
         busy={busy}
         onAnalyzeNow={onRefresh}
+        onHuntFired={async () => {
+          await load();
+          setPlayRefreshToken((n) => n + 1);
+        }}
         onProtectLosers={async () => {
           const losers = heldPositions.filter((p) => {
             if (p.avgCost == null || p.lastPrice == null || !p.avgCost) return false;
@@ -602,6 +606,10 @@ export default function DeskBoard() {
         buyingPower={buyingPower}
         busy={busy}
         onAnalyzeNow={onRefresh}
+        onHuntFired={async () => {
+          await load();
+          setPlayRefreshToken((n) => n + 1);
+        }}
         onRegimeUpdated={(regime) => {
           setDesk((prev) => (prev ? { ...prev, regime } : prev));
         }}

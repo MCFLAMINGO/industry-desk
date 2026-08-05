@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
-import { RefreshCw, ShieldAlert, CheckCircle2, AlertOctagon, Quote } from "lucide-react";
-import { fmtPct, fmtUsd, type DeskDayState } from "@/lib/desk";
+import { RefreshCw, ShieldAlert, CheckCircle2, AlertOctagon, Quote, Crosshair } from "lucide-react";
+import { toast } from "sonner";
+import { fmtPct, fmtUsd, takeOptionHunt, type DeskDayState } from "@/lib/desk";
 import type { RhLivePosition } from "@/lib/robinhood";
 
 type Props = {
@@ -13,6 +14,7 @@ type Props = {
   busy?: boolean;
   onAnalyzeNow: () => void | Promise<void>;
   onProtectLosers?: () => void | Promise<void>;
+  onHuntFired?: () => void | Promise<void>;
 };
 
 type Row = {
@@ -173,7 +175,9 @@ export default function TodayPlan({
   busy,
   onAnalyzeNow,
   onProtectLosers,
+  onHuntFired,
 }: Props) {
+  const [huntBusy, setHuntBusy] = useState<"preview" | "live" | null>(null);
   const [tick, setTick] = useState(0);
   useEffect(() => {
     const iv = window.setInterval(() => setTick((n) => n + 1), 250);
@@ -276,14 +280,42 @@ export default function TodayPlan({
         huntBest.strike != null ? `$${huntBest.strike}` : null,
         huntBest.debitUsd != null ? `~$${Math.round(huntBest.debitUsd)} debit` : null,
         huntBest.upsideMultiple != null ? `~${huntBest.upsideMultiple}× on a typical move` : null,
-        fusion?.action === "pass"
-          ? "Found — fusion still chose cash; sleeve is sized/capped if taken."
-          : "Tradeable asymmetric sleeve from the board hunt.",
+        "Agent fires when advantageous (auto) — or Take LIVE below.",
       ]
         .filter(Boolean)
         .join(" · "),
       tone: "add",
     });
+  }
+
+  async function fireHunt(live: boolean) {
+    if (!huntBest?.tradeable) return;
+    if (live) {
+      const ok = window.confirm(
+        `Take LIVE ${huntBest.symbol} ${String(huntBest.right || "call").toUpperCase()}`
+          + (huntBest.strike != null ? ` $${huntBest.strike}` : "")
+          + (huntBest.debitUsd != null ? ` · ~$${Math.round(Number(huntBest.debitUsd))} debit` : "")
+          + "?\n\nSized/capped option sleeve into the capital slot — agent monitors/banks gains."
+      );
+      if (!ok) return;
+    }
+    setHuntBusy(live ? "live" : "preview");
+    try {
+      const out = await takeOptionHunt({ live, best: huntBest });
+      if (!out.ok) {
+        throw new Error(out.detail || out.reason || out.error || out.message || "Hunt fire failed");
+      }
+      toast.success(live ? "Hunt LIVE armed" : "Hunt preview armed", {
+        description: out.message || `${out.instrument} ${out.symbol} · $${out.notional}`,
+      });
+      await onHuntFired?.();
+    } catch (e) {
+      toast.error(live ? "Take LIVE failed" : "Preview failed", {
+        description: (e as Error).message,
+      });
+    } finally {
+      setHuntBusy(null);
+    }
   }
 
   // Weekly framing: the daily number is information, the WEEK is the target.
@@ -464,28 +496,54 @@ export default function TodayPlan({
 
       {huntBest?.symbol ? (
         <div className="border-b border-[var(--line)] bg-[var(--teal)]/8 px-5 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--teal-deep)]">
-            Option hunt
-            {hunt?.tradeableCount ? ` · ${hunt.tradeableCount} tradeable` : ""}
-            {hunt?.scanned != null ? ` · scanned ${hunt.scanned}` : ""}
-          </p>
-          <p className="mt-1 text-sm font-semibold text-[var(--ink)]">
-            {huntBest.symbol} {String(huntBest.right || "").toUpperCase()}
-            {huntBest.strike != null ? ` $${huntBest.strike}` : ""}
-            {huntBest.expiration ? ` · ${String(huntBest.expiration).slice(0, 10)}` : ""}
-            {huntBest.debitUsd != null ? ` · ~$${Math.round(Number(huntBest.debitUsd))} debit` : ""}
-            {huntBest.upsideMultiple != null
-              ? ` · ~${huntBest.upsideMultiple}× on a typical move`
-              : ""}
-            {huntBest.tradeable ? " · TRADEABLE" : " · not cleared"}
-          </p>
-          <p className="mt-0.5 text-xs text-[var(--ink-soft)]">
-            {huntBest.tradeable
-              ? huntBest.plain
-                || hunt?.note
-                || "Board hunt found an asymmetric sleeve — fusion still has to choose open_call/put."
-              : hunt?.note || "Scanning; nothing cleared the gate this pass."}
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--teal-deep)]">
+                Option hunt
+                {hunt?.tradeableCount ? ` · ${hunt.tradeableCount} tradeable` : ""}
+                {hunt?.scanned != null ? ` · scanned ${hunt.scanned}` : ""}
+              </p>
+              <p className="mt-1 text-sm font-semibold text-[var(--ink)]">
+                {huntBest.symbol} {String(huntBest.right || "").toUpperCase()}
+                {huntBest.strike != null ? ` $${huntBest.strike}` : ""}
+                {huntBest.expiration ? ` · ${String(huntBest.expiration).slice(0, 10)}` : ""}
+                {huntBest.debitUsd != null ? ` · ~$${Math.round(Number(huntBest.debitUsd))} debit` : ""}
+                {huntBest.upsideMultiple != null
+                  ? ` · ~${huntBest.upsideMultiple}× on a typical move`
+                  : ""}
+                {huntBest.tradeable ? " · TRADEABLE" : " · not cleared"}
+              </p>
+              <p className="mt-0.5 text-xs text-[var(--ink-soft)]">
+                {huntBest.tradeable
+                  ? huntBest.plain
+                    || hunt?.note
+                    || "Agent can fire this sleeve whenever the edge clears — you can also Take LIVE."
+                  : hunt?.note || "Scanning; nothing cleared the gate this pass."}
+              </p>
+            </div>
+            {huntBest.tradeable ? (
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={Boolean(busy || huntBusy || desk?.refreshing)}
+                  onClick={() => void fireHunt(false)}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[var(--teal-deep)]/40 bg-white px-3 py-1.5 text-xs font-semibold text-[var(--teal-deep)] disabled:opacity-50"
+                >
+                  <Crosshair className={clsx("h-3.5 w-3.5", huntBusy === "preview" && "animate-pulse")} />
+                  {huntBusy === "preview" ? "Arming…" : "Preview sleeve"}
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(busy || huntBusy || desk?.refreshing)}
+                  onClick={() => void fireHunt(true)}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[var(--teal-deep)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                >
+                  <Crosshair className={clsx("h-3.5 w-3.5", huntBusy === "live" && "animate-pulse")} />
+                  {huntBusy === "live" ? "Firing…" : "Take LIVE"}
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
