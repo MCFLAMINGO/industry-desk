@@ -150,6 +150,22 @@ export type DeskPlan = {
   live?: boolean;
   dry_run?: boolean;
   strategy?: string;
+  order_kind?: string;
+  options_risk?: {
+    style?: string;
+    targetPct?: number;
+    stretchPct?: number;
+    stopPct?: number;
+    note?: string;
+  } | null;
+  option_meta?: {
+    right?: string;
+    strike?: number | null;
+    expiration?: string | null;
+    debitUsd?: number | null;
+    entryMark?: number | null;
+    option_id?: string | null;
+  } | null;
   filled_notional?: number | null;
   open_filled?: boolean;
   open_submitted?: boolean;
@@ -478,6 +494,42 @@ export type DeskDayState = {
   dayPeakPnlPct?: number | null;
   dayGoalHit?: boolean;
   bankMode?: boolean;
+  /** One capital slot — the armed sleeve that should sit next to Staging / the play. */
+  capitalSlot?: {
+    maxSlots?: number;
+    used?: number;
+    free?: number;
+    incumbent?: {
+      symbol?: string | null;
+      kind?: string | null;
+      right?: string | null;
+      live?: boolean;
+      planId?: string | null;
+      thesis?: string | null;
+      sizeCapUsd?: number | null;
+      edgeScore?: number | null;
+      openedAt?: string | null;
+      contract?: {
+        strike?: number | null;
+        expiration?: string | null;
+        right?: string | null;
+      } | null;
+      optionMeta?: {
+        strike?: number | null;
+        expiration?: string | null;
+        mark?: number | null;
+        verdict?: string | null;
+      } | null;
+      exitPlan?: {
+        rule?: string | null;
+        takeProfitPct?: number | null;
+        stopLossPct?: number | null;
+      } | null;
+    } | null;
+    holdings?: unknown[];
+    updatedAt?: string | null;
+    policy?: { note?: string | null };
+  } | null;
   /** Board-wide small-debit option hunt (asymmetric sleeves → then protect). */
   optionHunt?: {
     note?: string | null;
