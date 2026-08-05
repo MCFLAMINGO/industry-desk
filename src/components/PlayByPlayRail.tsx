@@ -282,11 +282,16 @@ export default function PlayByPlayRail({
   bookFilter,
   symbols,
   refreshToken = 0,
+  pinPlanId = null,
+  pinSymbol = null,
 }: {
   bookFilter?: string | null;
   symbols?: string[];
   /** Bump from parent after Preview / Approve / desk Refresh */
   refreshToken?: number;
+  /** Capital-slot plan — always shown, even if completed or off-book */
+  pinPlanId?: string | null;
+  pinSymbol?: string | null;
 }) {
   const [plans, setPlans] = useState<DeskPlan[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -301,7 +306,21 @@ export default function PlayByPlayRail({
     try {
       const data = await fetchOpenBook();
       if (data.error) throw new Error(data.error);
-      const next = data.plans || [];
+      let next = data.plans || [];
+      // Capital-slot sleeve may be completed (dry stop) or missing from ACTIVE list —
+      // still pull it so "the play" appears on this rail.
+      if (pinPlanId && !next.some((p) => p.id === pinPlanId)) {
+        try {
+          const res = await fetch(
+            `/api/ceo?action=plans&id=${encodeURIComponent(pinPlanId)}`,
+            { cache: "no-store" }
+          );
+          const one = (await res.json()) as { plan?: DeskPlan };
+          if (one.plan) next = [one.plan, ...next];
+        } catch {
+          /* keep list */
+        }
+      }
       setPlans(next);
       setError(null);
       const at = new Date().toISOString();
@@ -322,7 +341,7 @@ export default function PlayByPlayRail({
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [pinPlanId]);
 
   useEffect(() => {
     load({ quiet: true });
@@ -335,14 +354,34 @@ export default function PlayByPlayRail({
   }, [refreshToken, load]);
 
   const active = useMemo(() => {
-    let open = plans.filter((p) => p.status !== "completed" && p.status !== "cancelled");
+    const pin = pinPlanId || null;
+    const pinSym = pinSymbol ? String(pinSymbol).toUpperCase() : null;
+    let open = plans.filter((p) => {
+      if (pin && p.id === pin) return true;
+      if (pinSym && String(p.symbol || "").toUpperCase() === pinSym
+        && (p.kind === "long_call" || p.kind === "long_put" || p.options_risk || p.order_kind === "options")) {
+        return true;
+      }
+      return p.status !== "completed" && p.status !== "cancelled";
+    });
     if (bookFilter && bookFilter !== "all" && symbols?.length) {
       const set = new Set(symbols.map((s) => s.toUpperCase()));
-      open = open.filter((p) => set.has(String(p.symbol || "").toUpperCase()));
+      open = open.filter((p) => {
+        if (pin && p.id === pin) return true;
+        if (pinSym && String(p.symbol || "").toUpperCase() === pinSym) return true;
+        // Option sleeves are desk-wide (capital slot), not book-tab inventory.
+        if (p.kind === "long_call" || p.kind === "long_put" || p.options_risk) return true;
+        return set.has(String(p.symbol || "").toUpperCase());
+      });
     }
-    open.sort((a, b) => Number(Boolean(b.live)) - Number(Boolean(a.live)));
+    open.sort((a, b) => {
+      const ap = pin && a.id === pin ? 1 : 0;
+      const bp = pin && b.id === pin ? 1 : 0;
+      if (bp !== ap) return bp - ap;
+      return Number(Boolean(b.live)) - Number(Boolean(a.live));
+    });
     return open;
-  }, [plans, bookFilter, symbols]);
+  }, [plans, bookFilter, symbols, pinPlanId, pinSymbol]);
 
   const spinning = loading || refreshing;
 
@@ -388,7 +427,8 @@ export default function PlayByPlayRail({
             Play-by-play
           </p>
           <p className="mt-1 text-sm text-[var(--ink-soft)]">
-            Desk-armed plans only. Dry-run is paper — real fills are in{" "}
+            Desk-armed plans. Capital-slot option sleeves stay pinned here (all books). Dry-run is
+            paper — real fills are in{" "}
             <span className="font-medium text-[var(--ink)]">Live positions</span> at the top.
           </p>
         </div>

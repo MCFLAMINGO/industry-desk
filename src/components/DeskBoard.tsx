@@ -33,6 +33,7 @@ import LivePositionsRail, {
 } from "@/components/LivePositionsRail";
 import DeskBrief from "@/components/DeskBrief";
 import StagingRail from "@/components/StagingRail";
+import CapitalSlotPlay from "@/components/CapitalSlotPlay";
 import AgentPushFeed from "@/components/AgentPushFeed";
 import MissionControl from "@/components/MissionControl";
 import OpenBell from "@/components/OpenBell";
@@ -832,6 +833,17 @@ export default function DeskBoard() {
         onSelectSymbol={(sym) => setStagedSymbol(sym.toUpperCase())}
       />
 
+      <CapitalSlotPlay
+        desk={desk}
+        busy={busy}
+        onChanged={async () => {
+          await load();
+          setPlayRefreshToken((n) => n + 1);
+          const sym = desk?.capitalSlot?.incumbent?.symbol;
+          if (sym) setStagedSymbol(String(sym).toUpperCase());
+        }}
+      />
+
       <StagingRail
         desk={desk}
         selectedSymbol={stagedSymbol}
@@ -1090,6 +1102,8 @@ export default function DeskBoard() {
         bookFilter={book}
         symbols={bookSymbols}
         refreshToken={playRefreshToken}
+        pinPlanId={desk?.capitalSlot?.incumbent?.planId || null}
+        pinSymbol={desk?.capitalSlot?.incumbent?.symbol || null}
       />
     </main>
   );

@@ -119,8 +119,9 @@ export default function StagingRail({
             Active proposals
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-[var(--ink-soft)]">
-            This is the pre-live lane. Fusion / morning propose / micro APPROVE land here before
-            Preview (dry) or Approve live. Ranked plays below are the wider menu — not auto-buys.
+            Pre-live proposals. The armed capital-slot sleeve sits in{" "}
+            <span className="font-medium text-[var(--ink)]">The play</span> above — that is the
+            live/dry option (or equity) risk, not these staging cards.
           </p>
         </div>
         <p className="text-xs text-[var(--ink-soft)]">
