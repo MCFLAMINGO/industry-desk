@@ -2,19 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
-import { Activity, Target, Clock, AlertTriangle, RefreshCw, Anchor, Radio, Crosshair } from "lucide-react";
+import { Activity, Target, Clock, AlertTriangle, RefreshCw, Anchor, Radio } from "lucide-react";
 import { toast } from "sonner";
 import {
   fmtPct,
   fmtUsd,
   runDeskRiskOff,
   runRegimePass,
-  takeOptionHunt,
   type DeskDayState,
   type DeskRank,
   type DeskRegime,
 } from "@/lib/desk";
 import type { RhLivePosition } from "@/lib/robinhood";
+import OptionHuntControls from "@/components/OptionHuntControls";
 
 type Props = {
   desk: DeskDayState | null;
@@ -256,7 +256,6 @@ export default function MissionControl({
   const [nowTick, setNowTick] = useState(0);
   const [regimeBusy, setRegimeBusy] = useState(false);
   const [riskBusy, setRiskBusy] = useState(false);
-  const [huntBusy, setHuntBusy] = useState<"preview" | "live" | null>(null);
   const [localRegime, setLocalRegime] = useState<DeskRegime | null>(null);
   const [showRegimeDetail, setShowRegimeDetail] = useState(false);
   useEffect(() => {
@@ -432,84 +431,13 @@ export default function MissionControl({
                   : desk.optionHunt.note
                     || "Scanning; nothing cleared the gate this pass."}
               </p>
-              {desk.optionHunt.best.tradeable ? (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={Boolean(busy || huntBusy || desk?.refreshing)}
-                    onClick={() => {
-                      void (async () => {
-                        setHuntBusy("preview");
-                        try {
-                          const out = await takeOptionHunt({
-                            live: false,
-                            best: desk.optionHunt?.best,
-                          });
-                          if (!out.ok) {
-                            throw new Error(out.detail || out.reason || out.error || "Preview failed");
-                          }
-                          toast.success("Hunt preview armed", {
-                            description: out.message || `${out.instrument} ${out.symbol}`,
-                          });
-                          await onHuntFired?.();
-                        } catch (e) {
-                          toast.error("Preview failed", { description: (e as Error).message });
-                        } finally {
-                          setHuntBusy(null);
-                        }
-                      })();
-                    }}
-                    className="inline-flex items-center gap-1 rounded-full border border-[var(--teal-deep)]/40 bg-white px-2.5 py-1 text-[11px] font-semibold text-[var(--teal-deep)] disabled:opacity-50"
-                  >
-                    <Crosshair className="h-3 w-3" />
-                    {huntBusy === "preview" ? "Arming…" : "Preview"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={Boolean(busy || huntBusy || desk?.refreshing)}
-                    onClick={() => {
-                      const b = desk.optionHunt?.best;
-                      if (!b) return;
-                      const debit = b.debitUsd != null ? Math.round(Number(b.debitUsd)) : null;
-                      const bp = buyingPower != null ? Number(buyingPower) : null;
-                      if (bp != null && debit != null && bp < debit) {
-                        toast.error("Not enough buying power for LIVE option", {
-                          description: `Need ~$${debit} debit · BP ${fmtUsd(bp)}. Deposit or free cash first — prior Takes were dry/paper, not fills.`,
-                        });
-                        return;
-                      }
-                      const ok = window.confirm(
-                        `Take LIVE ${b.symbol} ${String(b.right || "call").toUpperCase()}`
-                          + (b.strike != null ? ` $${b.strike}` : "")
-                          + (debit != null ? ` · ~$${debit} debit` : "")
-                          + "?"
-                      );
-                      if (!ok) return;
-                      void (async () => {
-                        setHuntBusy("live");
-                        try {
-                          const out = await takeOptionHunt({ live: true, best: b });
-                          if (!out.ok) {
-                            throw new Error(out.detail || out.reason || out.error || "Take failed");
-                          }
-                          toast.success("Hunt LIVE armed", {
-                            description: out.message || `${out.instrument} ${out.symbol}`,
-                          });
-                          await onHuntFired?.();
-                        } catch (e) {
-                          toast.error("Take LIVE failed", { description: (e as Error).message });
-                        } finally {
-                          setHuntBusy(null);
-                        }
-                      })();
-                    }}
-                    className="inline-flex items-center gap-1 rounded-full bg-[var(--teal-deep)] px-2.5 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
-                  >
-                    <Crosshair className="h-3 w-3" />
-                    {huntBusy === "live" ? "Firing…" : "Take LIVE"}
-                  </button>
-                </div>
-              ) : null}
+              <OptionHuntControls
+                desk={desk}
+                buyingPower={buyingPower}
+                busy={busy}
+                compact
+                onFired={onHuntFired}
+              />
             </div>
           ) : null}
         </div>

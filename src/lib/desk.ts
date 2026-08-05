@@ -899,7 +899,7 @@ export async function takeOptionHunt(input: {
       why: why || undefined,
     }),
   });
-  return readJson(res) as Promise<{
+  const data = (await readJson(res)) as {
     ok?: boolean;
     mode?: string;
     symbol?: string;
@@ -910,7 +910,20 @@ export async function takeOptionHunt(input: {
     error?: string;
     reason?: string;
     detail?: string;
-  }>;
+    openBlocked?: boolean;
+    openDetail?: string;
+  };
+  if (res.status >= 500) {
+    throw new Error(
+      String(data.message || data.error || `Desk API ${res.status} — Take LIVE did not complete`)
+    );
+  }
+  if (data.openBlocked && data.ok) {
+    data.message =
+      data.message
+      || `Armed in slot but open blocked (${data.openDetail || "NO_AFFORDABLE_OPTION"}) — add buying power.`;
+  }
+  return data;
 }
 
 export async function armDeskPlay(input: {
