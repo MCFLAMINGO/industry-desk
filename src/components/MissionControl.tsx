@@ -356,6 +356,34 @@ export default function MissionControl({
               {" · not an auto-buy until fusion/Approve says so"}
             </p>
           )}
+          {desk?.optionHunt?.best ? (
+            <div className="mt-3 rounded-xl border border-[var(--line)] bg-[var(--sand)]/70 px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--teal-deep)]">
+                Option hunt
+                {desk.optionHunt.tradeableCount
+                  ? ` · ${desk.optionHunt.tradeableCount} tradeable`
+                  : ""}
+              </p>
+              <p className="mt-1 text-sm font-semibold text-[var(--ink)]">
+                {desk.optionHunt.best.symbol}{" "}
+                {desk.optionHunt.best.right?.toUpperCase()}
+                {desk.optionHunt.best.strike != null ? ` $${desk.optionHunt.best.strike}` : ""}
+                {desk.optionHunt.best.debitUsd != null
+                  ? ` · ~$${desk.optionHunt.best.debitUsd.toFixed(0)} debit`
+                  : ""}
+                {desk.optionHunt.best.upsideMultiple != null
+                  ? ` · ~${desk.optionHunt.best.upsideMultiple}× on a typical move`
+                  : ""}
+              </p>
+              <p className="mt-0.5 text-xs text-[var(--ink-soft)]">
+                {desk.optionHunt.best.tradeable
+                  ? desk.optionHunt.best.plain
+                    || "Tradeable asymmetric sleeve — fusion should open this, then protect gains."
+                  : desk.optionHunt.note
+                    || "Scanning; nothing cleared the gate this pass."}
+              </p>
+            </div>
+          ) : null}
         </div>
       </div>
 
