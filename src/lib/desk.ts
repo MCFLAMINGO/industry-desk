@@ -815,6 +815,38 @@ export async function runDeskPass(live = false): Promise<DeskDayState> {
   }
 }
 
+/** Owner Take / Preview — fire the tradeable option-hunt sleeve into the capital slot. */
+export async function takeOptionHunt(input: {
+  live: boolean;
+  best?: NonNullable<DeskDayState["optionHunt"]>["best"];
+  why?: string;
+}) {
+  const { live, best, why } = input;
+  const res = await fetch("/api/ceo", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "take-hunt",
+      confirm: live,
+      dryRun: !live,
+      best: best || undefined,
+      why: why || undefined,
+    }),
+  });
+  return readJson(res) as Promise<{
+    ok?: boolean;
+    mode?: string;
+    symbol?: string;
+    instrument?: string;
+    notional?: number;
+    planId?: string;
+    message?: string;
+    error?: string;
+    reason?: string;
+    detail?: string;
+  }>;
+}
+
 export async function armDeskPlay(input: {
   rank: DeskRank;
   notionalUsd: number;

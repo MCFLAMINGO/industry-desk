@@ -136,10 +136,14 @@ export async function POST(req: NextRequest) {
                     ? "/api/ceo/desk-regime"
                     : action === "desk-risk-off"
                       ? "/api/ceo/desk-risk-off"
-                      : "/api/ceo/arm-plan";
-    // desk-day / regime can be slow (news + FRED + NIM).
+                      : action === "desk-slot" || action === "take-hunt" || action === "fire-hunt"
+                        ? "/api/ceo/desk-slot"
+                        : "/api/ceo/arm-plan";
+    // desk-day / regime / hunt fire can be slow (RH chain + NIM).
     const timeoutMs =
-      action === "desk-day" || action === "desk-regime" ? 45_000 : POST_TIMEOUT_MS;
+      action === "desk-day" || action === "desk-regime" || action === "desk-slot" || action === "take-hunt" || action === "fire-hunt"
+        ? 45_000
+        : POST_TIMEOUT_MS;
     return await proxy(
       path,
       {
