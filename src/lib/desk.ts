@@ -476,6 +476,8 @@ export type DeskRegime = {
 export type DeskDayState = {
   ok?: boolean;
   error?: string;
+  /** True when payload is the Mission Control lite bootstrap (rankings truncated). */
+  lite?: boolean;
   et?: {
     dateKey?: string;
     weekday?: string;
@@ -763,24 +765,38 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-async function fetchDeskDayOnce(): Promise<DeskDayState> {
-  const res = await fetch("/api/ceo?action=desk-day", { cache: "no-store" });
+async function fetchDeskDayOnce(lite = false): Promise<DeskDayState> {
+  const qs = lite ? "action=desk-day&lite=1" : "action=desk-day";
+  const res = await fetch(`/api/ceo?${qs}`, { cache: "no-store" });
   const data = await readJson(res);
   if (data.ok === false || (res.status >= 400 && data.error)) {
     throw new Error(String(data.error || `Desk day failed (${res.status})`));
   }
+  if (!data.et || typeof data.et !== "object") {
+    throw new Error("Desk day missing session clock (et) — refusing blank Mission Control");
+  }
   return data as DeskDayState;
+}
+
+/** Fast Mission Control paint — et / fusion / capital slot without full rankings. */
+export async function fetchDeskDayLite(): Promise<DeskDayState> {
+  return fetchDeskDayOnce(true);
 }
 
 export async function fetchDeskDay(): Promise<DeskDayState> {
   try {
-    return await fetchDeskDayOnce();
+    return await fetchDeskDayOnce(false);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    // One retry — empty/platform 500s are usually transient proxy kills.
-    if (/empty response|timed out|504|502|500/i.test(msg)) {
-      await sleep(600);
-      return fetchDeskDayOnce();
+    // Prefer lite recovery so Mission Control unsticks even if full payload flakes.
+    if (/empty response|timed out|504|502|500|missing session clock/i.test(msg)) {
+      await sleep(400);
+      try {
+        return await fetchDeskDayOnce(true);
+      } catch {
+        await sleep(600);
+        return fetchDeskDayOnce(false);
+      }
     }
     throw err;
   }

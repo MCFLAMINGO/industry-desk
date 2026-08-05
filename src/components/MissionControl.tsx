@@ -21,10 +21,45 @@ type Props = {
   positions: RhLivePosition[];
   buyingPower: number | null;
   busy?: boolean;
+  loadError?: string | null;
   onAnalyzeNow: () => void | Promise<void>;
+  onReloadDesk?: () => void | Promise<void>;
   onRegimeUpdated?: (regime: DeskRegime | null) => void;
   onHuntFired?: () => void | Promise<void>;
 };
+
+/** Browser ET clock — Mission Control must not stick if desk-day JSON fails. */
+function clientEtParts(): NonNullable<DeskDayState["et"]> {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(new Date()).map((p) => [p.type, p.value]));
+  const hour = Number(parts.hour === "24" ? 0 : parts.hour);
+  const minute = Number(parts.minute);
+  const mins = hour * 60 + minute;
+  const weekday = String(parts.weekday || "");
+  const isWeekend = weekday === "Sat" || weekday === "Sun";
+  const isRth = !isWeekend && mins >= 9 * 60 + 30 && mins < 16 * 60;
+  return {
+    dateKey: `${parts.year}-${parts.month}-${parts.day}`,
+    weekday,
+    hour,
+    minute,
+    mins,
+    isWeekend,
+    isRth,
+    isMorningPlanWindow: !isWeekend && mins >= 8 * 60 && mins < 9 * 60 + 30,
+    isPreClose: !isWeekend && mins >= 15 * 60 && mins < 16 * 60,
+    isAfterClose: isWeekend || mins >= 16 * 60 || mins < 4 * 60,
+  };
+}
 
 function stanceLabel(stance?: string | null) {
   switch (stance) {
@@ -55,29 +90,38 @@ function minsUntil(etHour: number, etMinute: number, et: DeskDayState["et"]) {
 function sessionPlain(
   et: DeskDayState["et"],
   refreshing?: boolean,
-  deskMissing?: boolean
+  deskMissing?: boolean,
+  loadError?: string | null
 ) {
-  if (refreshing) {
+  if (refreshing && !deskMissing) {
     return {
       label: "Analyzing now",
       detail: "Fusion is re-reading the Robinhood tape and deciding what to do at open.",
       tone: "go" as const,
     };
   }
-  if (deskMissing || !et) {
+  if (!et) {
     return {
-      label: deskMissing ? "Desk not loaded" : "Loading session…",
-      detail: deskMissing
-        ? "Mission Control has no desk-day payload — refresh the page / Analyze. Auto flags and fusion look blank until then."
-        : "Waiting on desk clock.",
+      label: "Desk snapshot missing",
+      detail: loadError
+        ? `Could not load desk-day — ${loadError}`
+        : "No desk-day payload yet — retrying.",
       tone: "wait" as const,
     };
   }
+  const deskNote = deskMissing
+    ? (loadError
+      ? ` Desk snapshot failed (${loadError}). Auto/fusion blank until reload.`
+      : " Desk snapshot not loaded yet — retrying. Auto/fusion blank until it returns.")
+    : "";
   if (et.isRth) {
     return {
-      label: "Market open — agents live",
-      detail: "RTH is open. Auto-live can arm and manage plans against the 1% day band.",
-      tone: "go" as const,
+      label: deskMissing ? "Market open (browser clock)" : "Market open — agents live",
+      detail: (deskMissing
+        ? "RTH by your clock."
+        : "RTH is open. Auto-live can arm and manage plans against the 1% day band.")
+        + deskNote,
+      tone: deskMissing ? ("wait" as const) : ("go" as const),
     };
   }
   if (et.isMorningPlanWindow) {
@@ -85,27 +129,28 @@ function sessionPlain(
     return {
       label: m != null && m > 0 ? `${m} min to the open` : "Open is imminent",
       detail:
-        "Morning window. Agents should be refreshing the plan for 9:30 — not sitting idle on yesterday’s note.",
+        "Morning window. Agents should be refreshing the plan for 9:30 — not sitting idle on yesterday’s note."
+        + deskNote,
       tone: "wait" as const,
     };
   }
   if (et.isPreClose) {
     return {
       label: "Pre-close",
-      detail: "Bank/trail day sleeves. Week/month theses can ride.",
+      detail: "Bank/trail day sleeves. Week/month theses can ride." + deskNote,
       tone: "wait" as const,
     };
   }
   if (et.isAfterClose) {
     return {
       label: "After the close",
-      detail: "No new RTH opens. Protect inventory; next real decision window is ~8:00 ET.",
+      detail: "No new RTH opens. Protect inventory; next real decision window is ~8:00 ET." + deskNote,
       tone: "idle" as const,
     };
   }
   return {
     label: "Session closed",
-    detail: "Outside the regular session. Plans can still stage for the next open.",
+    detail: "Outside the regular session. Plans can still stage for the next open." + deskNote,
     tone: "idle" as const,
   };
 }
@@ -249,7 +294,9 @@ export default function MissionControl({
   positions,
   buyingPower,
   busy,
+  loadError,
   onAnalyzeNow,
+  onReloadDesk,
   onRegimeUpdated,
   onHuntFired,
 }: Props) {
@@ -266,7 +313,14 @@ export default function MissionControl({
   const bookPnlPct = useMemo(() => bookPnlFromPositions(positions), [positions, nowTick]);
   const goalMin = (desk?.dayGoal?.min || 0.01) * 100;
   const goalStretch = (desk?.dayGoal?.stretch || 0.03) * 100;
-  const session = sessionPlain(desk?.et, Boolean(desk?.refreshing || busy), !desk);
+  const et = desk?.et || (!desk ? clientEtParts() : undefined);
+  const deskMissing = !desk || !desk.et;
+  const session = sessionPlain(
+    et,
+    Boolean(desk?.refreshing || busy),
+    deskMissing,
+    loadError
+  );
   const fusion = fusionPlain(desk);
   const openLine = atOpenPlain(desk, bookPnlPct);
   const regime = localRegime || desk?.regime || null;
@@ -324,9 +378,28 @@ export default function MissionControl({
           </p>
           <p className="mt-1 text-sm leading-relaxed text-[var(--ink-soft)]">{session.detail}</p>
           <p className="mt-3 text-xs text-[var(--ink-soft)]">
-            Auto execute {desk?.autoExecute ? "ON" : "off"} · auto live{" "}
-            {desk?.autoLive ? "ON" : "off"} · BP {fmtUsd(buyingPower)}
+            Auto execute {desk?.et ? (desk.autoExecute ? "ON" : "off") : "—"} · auto live{" "}
+            {desk?.et ? (desk.autoLive ? "ON" : "off") : "—"} · BP {fmtUsd(buyingPower)}
           </p>
+          {deskMissing ? (
+            <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2">
+              <p className="text-xs font-semibold text-amber-950">
+                Desk snapshot stuck — Mission Control needs desk-day JSON
+              </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-amber-950/80">
+                {loadError || "Retrying automatically every few seconds."}
+              </p>
+              <button
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={() => void (onReloadDesk || onAnalyzeNow)()}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-900 px-3 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
+              >
+                <RefreshCw className={clsx("h-3 w-3", busy && "animate-spin")} />
+                Reload desk now
+              </button>
+            </div>
+          ) : null}
         </div>
 
         <div className="border-b border-[var(--line)] px-5 py-4 lg:border-b-0 lg:border-r">
