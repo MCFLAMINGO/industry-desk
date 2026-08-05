@@ -11,6 +11,7 @@ import { DESK_BOOKS, INDUSTRIES } from "@/lib/industries";
 import {
   armDeskPlay,
   fetchDeskDay,
+  fetchDeskDayLite,
   fetchIndustryTape,
   fetchOpenBook,
   fmtPct,
@@ -200,6 +201,36 @@ export default function DeskBoard() {
   const load = useCallback(async () => {
     setLoadError(null);
     const errors: string[] = [];
+    // Lite first so Mission Control never sticks on "Loading session…" while
+    // the full ~150KB rankings payload chews or flakes.
+    try {
+      const lite = await fetchDeskDayLite();
+      setDesk((prev) => {
+        if (prev && !prev.lite && prev.state?.rankings?.length) {
+          return {
+            ...lite,
+            state: {
+              ...lite.state,
+              rankings: prev.state.rankings,
+              morningPlan: prev.state.morningPlan || lite.state?.morningPlan,
+            },
+            lite: undefined,
+          };
+        }
+        return lite;
+      });
+      const seed =
+        lite.lastDecision?.symbol ||
+        lite.state?.morningPlan?.proposeArm?.symbol ||
+        lite.state?.rankings?.[0]?.symbol ||
+        null;
+      if (seed) {
+        setStagedSymbol((prev) => prev || String(seed).toUpperCase());
+      }
+    } catch (e) {
+      errors.push(`Desk day: ${(e as Error).message || e}`);
+    }
+
     const [d, p, s] = await Promise.allSettled([
       fetchDeskDay(),
       fetchOpenBook(),
@@ -220,7 +251,7 @@ export default function DeskBoard() {
         setStagedSymbol((prev) => prev || String(seed).toUpperCase());
       }
     } else {
-      errors.push(`Desk day: ${d.reason?.message || d.reason}`);
+      errors.push(`Desk day full: ${d.reason?.message || d.reason}`);
     }
 
     if (p.status === "rejected") {
@@ -235,6 +266,7 @@ export default function DeskBoard() {
     if (s.status === "fulfilled") setRh(s.value);
 
     if (errors.length) setLoadError(errors.join(" · "));
+    else setLoadError(null);
     const at = new Date().toISOString();
     setDeskUpdatedAt(at);
     return { desk: nextDesk, at };
@@ -244,15 +276,16 @@ export default function DeskBoard() {
     load();
   }, [load]);
 
-  // Morning window / RTH: keep mission control honest — poll desk every 30s.
+  // Always retry when Mission Control has no session clock; otherwise poll in RTH.
   useEffect(() => {
+    const stuck = !desk?.et;
     const hot = Boolean(desk?.et?.isMorningPlanWindow || desk?.et?.isRth || desk?.refreshing);
-    if (!hot) return;
+    if (!stuck && !hot) return;
     const iv = window.setInterval(() => {
       void load();
-    }, 30_000);
+    }, stuck ? 8_000 : 30_000);
     return () => window.clearInterval(iv);
-  }, [load, desk?.et?.isMorningPlanWindow, desk?.et?.isRth, desk?.refreshing]);
+  }, [load, desk?.et, desk?.et?.isMorningPlanWindow, desk?.et?.isRth, desk?.refreshing]);
 
   // Light tape fetch when the book tab changes — do not re-run full desk load.
   useEffect(() => {
@@ -606,7 +639,11 @@ export default function DeskBoard() {
         positions={heldPositions}
         buyingPower={buyingPower}
         busy={busy}
+        loadError={loadError}
         onAnalyzeNow={onRefresh}
+        onReloadDesk={async () => {
+          await load();
+        }}
         onHuntFired={async () => {
           await load();
           setPlayRefreshToken((n) => n + 1);

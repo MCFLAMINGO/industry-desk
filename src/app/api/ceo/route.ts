@@ -62,7 +62,12 @@ export async function GET(req: NextRequest) {
   const action = req.nextUrl.searchParams.get("action") || "desk-day";
   try {
     if (action === "desk-day") {
-      return await proxy("/api/ceo/desk-day", {}, GET_TIMEOUT_MS);
+      const lite = req.nextUrl.searchParams.get("lite");
+      const path =
+        lite === "1" || lite === "true"
+          ? "/api/ceo/desk-day?lite=1"
+          : "/api/ceo/desk-day";
+      return await proxy(path, {}, GET_TIMEOUT_MS);
     }
     if (action === "industry-tape") {
       const book = req.nextUrl.searchParams.get("book");
