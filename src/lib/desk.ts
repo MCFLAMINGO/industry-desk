@@ -478,6 +478,34 @@ export type DeskDayState = {
   dayPeakPnlPct?: number | null;
   dayGoalHit?: boolean;
   bankMode?: boolean;
+  /** Board-wide small-debit option hunt (asymmetric sleeves → then protect). */
+  optionHunt?: {
+    note?: string | null;
+    scanned?: number | null;
+    tradeableCount?: number;
+    best?: {
+      symbol?: string | null;
+      right?: string | null;
+      strike?: number | null;
+      expiration?: string | null;
+      debitUsd?: number | null;
+      verdict?: string | null;
+      tradeable?: boolean;
+      edgeScore?: number | null;
+      upsideMultiple?: number | null;
+      sizeCapUsd?: number | null;
+      dte?: number | null;
+      plain?: string | null;
+    } | null;
+    candidates?: Array<{
+      symbol?: string | null;
+      right?: string | null;
+      debitUsd?: number | null;
+      upsideMultiple?: number | null;
+      verdict?: string | null;
+      tradeable?: boolean;
+    }>;
+  } | null;
   /** Latest NIM fusion entry decision (not a tape scoreboard). */
   lastDecisionAt?: string | null;
   /** Why this pass produced no NEW call (slot held, max live, auto off…). */
