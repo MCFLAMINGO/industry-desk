@@ -1021,8 +1021,19 @@ export default function DeskBoard() {
                           r.synthesis.recommend === "PASS" && "bg-rose-100 text-rose-900",
                           r.synthesis.recommend === "WATCH" && "bg-slate-100 text-slate-800"
                         )}
+                        title={
+                          r.synthesis.recommend === "CONFLICT"
+                            ? "Not a short — agents disagree; do not arm"
+                            : undefined
+                        }
                       >
-                        {r.synthesis.recommend}
+                        {r.synthesis.recommend === "CONFLICT"
+                          ? "HOLD · agents disagree"
+                          : r.synthesis.recommend === "WATCH"
+                            ? "WATCH only"
+                            : r.synthesis.recommend === "PASS"
+                              ? "PASS · no trade"
+                              : r.synthesis.recommend}
                       </span>
                     ) : null}
                     {r.synthesis?.verdict ? (
@@ -1066,6 +1077,11 @@ export default function DeskBoard() {
                       )}
                     >
                       {r.synthesis.stanceLabel}
+                    </p>
+                  ) : null}
+                  {r.synthesis?.recommend === "CONFLICT" ? (
+                    <p className="mt-1 text-xs font-medium text-amber-900">
+                      Sensor only — not a short and not an order. Stay out until conflict clears.
                     </p>
                   ) : null}
                   {r.synthesis?.invalidate?.length ? (

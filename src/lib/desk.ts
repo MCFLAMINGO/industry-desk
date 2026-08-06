@@ -202,6 +202,7 @@ export type DeskPlan = {
               id?: string;
               state?: string;
               cumulative_quantity?: string | number;
+              processed_quantity?: string | number;
               quantity?: string | number;
               dollar_based_amount?: { amount?: string };
             };
@@ -221,34 +222,98 @@ export type DeskPlan = {
 export function planFillTruth(plan: DeskPlan): {
   kind: "dry" | "filled" | "submitted_unfilled" | "unknown";
   label: string;
+  /** Short chip for badges */
+  chip: string;
   orderState?: string | null;
 } {
   const open = plan.steps?.find((s) => s.phase === "open");
   if (!plan.live || plan.dry_run || open?.status === "dry_run_done") {
-    return { kind: "dry", label: "Dry-run · not placed" };
+    return {
+      kind: "dry",
+      label: "Paper only — not placed at Robinhood",
+      chip: "PAPER · not placed",
+    };
+  }
+  // Explicit false from the server wins over intended filled_quantity stamps.
+  if (plan.open_filled === true) {
+    const amt = plan.filled_notional;
+    return {
+      kind: "filled",
+      label: amt != null ? `Filled in Robinhood · ~$${Math.round(Number(amt))} at risk` : "Filled in Robinhood — agents managing it",
+      chip: amt != null ? `FILLED · ~$${Math.round(Number(amt))}` : "FILLED in RH",
+      orderState: plan.order_state || null,
+    };
   }
   const order = open?.result?.placed?.parsed?.data?.order;
   const state = String(plan.order_state || order?.state || "").toLowerCase() || null;
-  const cum = Number(plan.filled_qty ?? order?.cumulative_quantity ?? 0);
+  const cum = Number(plan.filled_qty ?? order?.cumulative_quantity ?? order?.processed_quantity ?? 0);
   if (cum > 0 || state === "filled" || state === "partially_filled") {
     const amt = plan.filled_notional;
     return {
       kind: "filled",
-      label: amt != null ? `Filled ~$${amt}` : "Filled in Robinhood",
+      label: amt != null ? `Filled in Robinhood · ~$${Math.round(Number(amt))} at risk` : "Filled in Robinhood — agents managing it",
+      chip: amt != null ? `FILLED · ~$${Math.round(Number(amt))}` : "FILLED in RH",
       orderState: state,
     };
   }
-  if (state === "queued" || state === "unconfirmed" || state === "confirmed" || open?.status === "done") {
+  if (
+    plan.open_filled === false
+    || state === "queued"
+    || state === "unconfirmed"
+    || state === "confirmed"
+    || open?.status === "done"
+    || plan.open_submitted
+  ) {
     return {
       kind: "submitted_unfilled",
-      label: `Submitted · ${state || "queued"} · not filled (no position)`,
+      label: "LIVE order sent — Robinhood has not filled it. Not a position yet.",
+      chip: "LIVE order · not filled",
       orderState: state,
     };
   }
-  if (plan.open_filled && plan.filled_notional != null) {
-    return { kind: "unknown", label: `Marked ~$${plan.filled_notional} (verify in RH)`, orderState: state };
+  return {
+    kind: "unknown",
+    label: "Armed live — confirm fill status in Robinhood",
+    chip: "ARMED LIVE · confirm fill",
+    orderState: state,
+  };
+}
+
+/** Stage board recommend chip — CONFLICT is not a short signal. */
+export function recommendPlain(recommend: string | null | undefined): {
+  chip: string;
+  hint: string | null;
+} {
+  const r = String(recommend || "").toUpperCase();
+  switch (r) {
+    case "CONFLICT":
+      return {
+        chip: "HOLD · agents disagree",
+        hint: "Not a short and not an arm — stay out until the conflict clears.",
+      };
+    case "WATCH":
+      return { chip: "WATCH only", hint: "Sensor on the board — not armed into the capital slot." };
+    case "PASS":
+      return { chip: "PASS · no trade", hint: null };
+    case "PREVIEW":
+      return { chip: "PREVIEW", hint: "Paper path ok — Take LIVE still needs your click / auto-live." };
+    case "APPROVE":
+      return { chip: "APPROVE", hint: null };
+    default:
+      return { chip: recommend || "—", hint: null };
   }
-  return { kind: "unknown", label: "No fill yet", orderState: state };
+}
+
+export function formatEtTime(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  return new Date(t).toLocaleString("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
 }
 
 export type DeskHint = {

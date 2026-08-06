@@ -142,11 +142,15 @@ function PlayCard({
             </span>
             <span
               className={clsx(
-                "rounded-full px-2 py-0.5 text-xs",
-                live ? "bg-[var(--teal-deep)] text-white" : "bg-amber-100 text-amber-900"
+                "rounded-full px-2 py-0.5 text-xs font-semibold",
+                fill.kind === "filled" && "bg-[var(--ok)] text-white",
+                fill.kind === "submitted_unfilled" && "bg-amber-500 text-amber-950",
+                fill.kind === "dry" && "bg-amber-100 text-amber-900",
+                fill.kind === "unknown" && live && "bg-[var(--teal-deep)] text-white",
+                fill.kind === "unknown" && !live && "bg-amber-100 text-amber-900"
               )}
             >
-              {live ? "LIVE" : "DRY-RUN"}
+              {fill.chip}
             </span>
             {waitingSession ? (
               <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-900">

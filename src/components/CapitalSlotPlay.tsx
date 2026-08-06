@@ -6,6 +6,7 @@ import { Crosshair, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   fetchOpenBook,
+  planFillTruth,
   releaseCapitalSlot,
   takeOptionHunt,
   type DeskDayState,
@@ -73,9 +74,35 @@ export default function CapitalSlotPlay({ desk, busy, onChanged }: Props) {
   const exp = String(slot.contract?.expiration || slot.optionMeta?.expiration || "").slice(0, 10);
   const planMissing = Boolean(slot.planId) && !loading && !plan;
   const live = Boolean(slot.live || (plan?.live && !plan?.dry_run));
+  const fill = plan ? planFillTruth(plan) : null;
   const status = plan?.status || (planMissing ? "missing" : live ? "armed" : "dry");
-  const goneQuiet = status === "completed" || status === "cancelled" || planMissing;
-  const isGhost = goneQuiet || (live && planMissing);
+  const isGhost =
+    status === "completed"
+    || status === "cancelled"
+    || planMissing
+    || (live && planMissing);
+  const chip = isGhost
+    ? "GHOST seat · clear"
+    : fill?.chip
+      || (live ? "ARMED LIVE · confirm fill" : "PAPER · not placed");
+  const chipTone = isGhost || fill?.kind === "submitted_unfilled"
+    ? "bg-amber-500 text-amber-950"
+    : fill?.kind === "filled"
+      ? "bg-[var(--ok)] text-white"
+      : live
+        ? "bg-white/20 text-white"
+        : "bg-white/20 text-white";
+  const seatPlain = isGhost
+    ? (planMissing
+      ? "Plan is gone — this is not a filled position. Clear the seat or Take a fresh sleeve."
+      : "Sleeve finished — seat still holds the idea. Clear ghost, or Preview / Take LIVE.")
+    : fill?.kind === "filled"
+      ? "Real RH fill — agents manage stop / bank on Play-by-play below."
+      : fill?.kind === "submitted_unfilled"
+        ? "Order is LIVE at Robinhood but not filled — you do not have the option yet."
+        : live
+          ? "Armed live — confirm fill in RH before treating this as risk."
+          : "Paper / preview only — not real money until Take LIVE fills.";
 
   async function promote(liveFire: boolean) {
     if (liveFire) {
@@ -133,11 +160,10 @@ export default function CapitalSlotPlay({ desk, busy, onChanged }: Props) {
         <span
           className={clsx(
             "rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide",
-            live ? "bg-[var(--ok)] text-white" : "bg-white/20 text-white"
+            chipTone
           )}
         >
-          {live ? "LIVE" : "DRY / PREVIEW"}
-          {goneQuiet ? " · finished tick" : ""}
+          {chip}
         </span>
       </div>
       <div className="flex flex-wrap items-start justify-between gap-4 px-5 py-4">
@@ -151,24 +177,28 @@ export default function CapitalSlotPlay({ desk, busy, onChanged }: Props) {
             {slot.sizeCapUsd != null ? `≤$${Math.round(Number(slot.sizeCapUsd))} cap` : "Sized sleeve"}
             {slot.edgeScore != null ? ` · edge ${Number(slot.edgeScore).toFixed(2)}` : ""}
             {plan?.id ? ` · plan ${plan.id.slice(0, 8)}` : slot.planId ? ` · plan ${String(slot.planId).slice(0, 8)}` : ""}
-            {loading ? " · syncing…" : ""}
-            {status ? ` · ${status}` : ""}
+            {loading ? " · syncing fill…" : ""}
           </p>
           <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-[var(--ink)]">
             {slot.thesis || slot.exitPlan?.rule || "Capital slot occupied — manage / bank gains, do not spray."}
           </p>
-          {isGhost ? (
-            <p className="mt-2 text-xs font-medium text-amber-800">
-              {planMissing
-                ? "Plan is gone — this LIVE badge is a ghost seat, not a filled position. Clear it or Take a fresh sleeve."
-                : "Sleeve finished or cancelled — slot still holds this idea. Clear ghost, or Take LIVE / Preview to re-arm."}
-            </p>
-          ) : null}
+          <p
+            className={clsx(
+              "mt-2 text-xs font-medium",
+              fill?.kind === "filled" ? "text-[var(--ok)]" : "text-amber-800"
+            )}
+          >
+            {seatPlain}
+          </p>
         </div>
         <div className="flex shrink-0 flex-col gap-2">
-          {isGhost || !live ? (
+          {fill?.kind === "filled" && !isGhost ? (
+            <p className="max-w-[12rem] text-xs text-[var(--ink-soft)]">
+              Real fill — Play-by-play below manages stop / bank.
+            </p>
+          ) : (
             <>
-              {!live ? (
+              {(!live || fill?.kind === "dry") && !isGhost ? (
                 <>
                   <button
                     type="button"
@@ -210,13 +240,9 @@ export default function CapitalSlotPlay({ desk, busy, onChanged }: Props) {
                 }}
                 className="inline-flex items-center justify-center rounded-full border border-[var(--line)] px-3 py-1.5 text-xs font-medium text-[var(--ink-soft)] disabled:opacity-50"
               >
-                Clear ghost
+                {isGhost ? "Clear ghost" : "Release seat"}
               </button>
             </>
-          ) : (
-            <p className="max-w-[12rem] text-xs text-[var(--ink-soft)]">
-              Live in the slot — play-by-play below manages stop / bank.
-            </p>
           )}
         </div>
       </div>
