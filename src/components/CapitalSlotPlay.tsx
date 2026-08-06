@@ -71,9 +71,11 @@ export default function CapitalSlotPlay({ desk, busy, onChanged }: Props) {
   const right = String(slot.right || slot.contract?.right || "call").toUpperCase();
   const strike = slot.contract?.strike ?? slot.optionMeta?.strike;
   const exp = String(slot.contract?.expiration || slot.optionMeta?.expiration || "").slice(0, 10);
+  const planMissing = Boolean(slot.planId) && !loading && !plan;
   const live = Boolean(slot.live || (plan?.live && !plan?.dry_run));
-  const status = plan?.status || (live ? "armed" : "dry");
-  const goneQuiet = status === "completed" || status === "cancelled";
+  const status = plan?.status || (planMissing ? "missing" : live ? "armed" : "dry");
+  const goneQuiet = status === "completed" || status === "cancelled" || planMissing;
+  const isGhost = goneQuiet || (live && planMissing);
 
   async function promote(liveFire: boolean) {
     if (liveFire) {
@@ -155,34 +157,39 @@ export default function CapitalSlotPlay({ desk, busy, onChanged }: Props) {
           <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-[var(--ink)]">
             {slot.thesis || slot.exitPlan?.rule || "Capital slot occupied — manage / bank gains, do not spray."}
           </p>
-          {goneQuiet ? (
+          {isGhost ? (
             <p className="mt-2 text-xs font-medium text-amber-800">
-              Dry sleeve was stop-closed on a bad premium unit tick earlier — slot still holds this idea.
-              Take LIVE (or Preview) to put it back on the play rail.
+              {planMissing
+                ? "Plan is gone — this LIVE badge is a ghost seat, not a filled position. Clear it or Take a fresh sleeve."
+                : "Sleeve finished or cancelled — slot still holds this idea. Clear ghost, or Take LIVE / Preview to re-arm."}
             </p>
           ) : null}
         </div>
         <div className="flex shrink-0 flex-col gap-2">
-          {!live ? (
+          {isGhost || !live ? (
             <>
-              <button
-                type="button"
-                disabled={Boolean(busy || firing)}
-                onClick={() => void promote(false)}
-                className="inline-flex items-center justify-center gap-1.5 rounded-full border border-[var(--teal-deep)]/40 bg-white px-3 py-1.5 text-xs font-semibold text-[var(--teal-deep)] disabled:opacity-50"
-              >
-                {firing === "preview" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Crosshair className="h-3.5 w-3.5" />}
-                Preview on rail
-              </button>
-              <button
-                type="button"
-                disabled={Boolean(busy || firing)}
-                onClick={() => void promote(true)}
-                className="inline-flex items-center justify-center gap-1.5 rounded-full bg-[var(--teal-deep)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-              >
-                {firing === "live" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Crosshair className="h-3.5 w-3.5" />}
-                Take LIVE
-              </button>
+              {!live ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={Boolean(busy || firing)}
+                    onClick={() => void promote(false)}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-full border border-[var(--teal-deep)]/40 bg-white px-3 py-1.5 text-xs font-semibold text-[var(--teal-deep)] disabled:opacity-50"
+                  >
+                    {firing === "preview" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Crosshair className="h-3.5 w-3.5" />}
+                    Preview on rail
+                  </button>
+                  <button
+                    type="button"
+                    disabled={Boolean(busy || firing)}
+                    onClick={() => void promote(true)}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-full bg-[var(--teal-deep)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    {firing === "live" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Crosshair className="h-3.5 w-3.5" />}
+                    Take LIVE
+                  </button>
+                </>
+              ) : null}
               <button
                 type="button"
                 disabled={Boolean(busy || firing)}
