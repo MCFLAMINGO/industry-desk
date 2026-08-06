@@ -7,9 +7,12 @@ import { toast } from "sonner";
 import {
   fmtPct,
   fmtUsd,
+  formatEtTime,
+  planFillTruth,
   runDeskRiskOff,
   runRegimePass,
   type DeskDayState,
+  type DeskPlan,
   type DeskRank,
   type DeskRegime,
 } from "@/lib/desk";
@@ -305,10 +308,34 @@ export default function MissionControl({
   const [riskBusy, setRiskBusy] = useState(false);
   const [localRegime, setLocalRegime] = useState<DeskRegime | null>(null);
   const [showRegimeDetail, setShowRegimeDetail] = useState(false);
+  const [slotPlan, setSlotPlan] = useState<DeskPlan | null>(null);
   useEffect(() => {
     const iv = window.setInterval(() => setNowTick((n) => n + 1), 15_000);
     return () => window.clearInterval(iv);
   }, []);
+
+  const slotPlanId = desk?.capitalSlot?.incumbent?.planId || null;
+  useEffect(() => {
+    if (!slotPlanId) {
+      setSlotPlan(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/ceo?action=plans&id=${encodeURIComponent(slotPlanId)}`, {
+          cache: "no-store",
+        });
+        const data = (await res.json()) as { plan?: DeskPlan };
+        if (!cancelled) setSlotPlan(data.plan || null);
+      } catch {
+        if (!cancelled) setSlotPlan(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [slotPlanId, desk?.capitalSlot?.updatedAt, desk?.lastDecisionAt]);
 
   const bookPnlPct = useMemo(() => bookPnlFromPositions(positions), [positions, nowTick]);
   const goalMin = (desk?.dayGoal?.min || 0.01) * 100;
@@ -323,6 +350,8 @@ export default function MissionControl({
   );
   const fusion = fusionPlain(desk);
   const openLine = atOpenPlain(desk, bookPnlPct);
+  const slotFill = slotPlan ? planFillTruth(slotPlan) : null;
+  const brainAt = formatEtTime(desk?.lastDecisionAt || null);
   const regime = localRegime || desk?.regime || null;
   const pastHits = regime?.historicalNews?.hits || [];
   // Only an actually-corroborated stance should colour the UI as urgent.
@@ -443,18 +472,28 @@ export default function MissionControl({
             {fusion.status}
           </p>
           <p className="mt-1 text-sm leading-relaxed text-[var(--ink-soft)]">{fusion.line}</p>
+          <p className="mt-2 text-xs leading-relaxed text-[var(--ink)]">
+            <span className="font-semibold text-[var(--teal-deep)]">Last brain</span>
+            {desk?.refreshing ? " · thinking now…" : brainAt ? ` · ${brainAt}` : " · waiting"}
+            {desk?.lastDecision?.action
+              ? ` · ${desk.lastDecision.action}${desk.lastDecision.symbol ? ` ${desk.lastDecision.symbol}` : ""}`
+              : ""}
+            {desk?.autoLive ? " · auto-live ON" : " · auto-live off"}
+            {" — "}
+            Stage / Rank cards are sensors, not buys.
+          </p>
           {(propose?.symbol || lead?.symbol) && (
             <p className="mt-2 text-xs text-[var(--ink-soft)]">
               Staging/tape: {propose?.symbol || lead?.symbol}
               {propose?.side || lead?.side ? ` ${propose?.side || lead?.side}` : ""}
-              {" · not an auto-buy until fusion/Approve says so"}
+              {" · menu only until fusion/Approve arms the capital slot"}
             </p>
           )}
           {desk?.capitalSlot?.incumbent?.symbol ? (
             <div className="mt-3 rounded-xl border-2 border-[var(--teal-deep)] bg-[var(--teal)]/10 px-3 py-2">
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--teal-deep)]">
                 The play · capital slot
-                {desk.capitalSlot.incumbent.live ? " · LIVE" : " · DRY / not filled"}
+                {slotFill ? ` · ${slotFill.chip}` : desk.capitalSlot.incumbent.live ? " · ARMED LIVE · confirm fill" : " · PAPER"}
               </p>
               <p className="mt-1 text-sm font-semibold text-[var(--ink)]">
                 {desk.capitalSlot.incumbent.symbol}{" "}
@@ -466,16 +505,22 @@ export default function MissionControl({
                   ? ` · plan ${String(desk.capitalSlot.incumbent.planId).slice(0, 8)}`
                   : ""}
               </p>
-              <p className="mt-0.5 text-xs text-[var(--ink-soft)]">
-                {desk.capitalSlot.incumbent.live
-                  ? "Armed in the one risk sleeve — also on Play-by-play below."
-                  : "Paper/dry only — not a filled option. Scroll to The play above Staging, or Take LIVE (needs buying power for the debit)."}
+              <p
+                className={clsx(
+                  "mt-0.5 text-xs",
+                  slotFill?.kind === "filled" ? "text-[var(--ok)]" : "text-amber-900"
+                )}
+              >
+                {slotFill?.label
+                  || (desk.capitalSlot.incumbent.live
+                    ? "Armed live — confirm Robinhood fill before treating this as risk."
+                    : "Paper only — not a filled option. Take LIVE needs buying power for the debit.")}
               </p>
             </div>
           ) : (
             <p className="mt-3 text-xs text-[var(--ink-soft)]">
-              Capital slot empty — no live option sleeve is armed. Take LIVE on Option hunt needs
-              ~$20–$50 BP (you have {fmtUsd(buyingPower)}).
+              Capital slot empty — no option sleeve is the one real risk seat. Take LIVE on Option hunt
+              needs ~$20–$50 BP (you have {fmtUsd(buyingPower)}).
             </p>
           )}
           {desk?.optionHunt?.best ? (

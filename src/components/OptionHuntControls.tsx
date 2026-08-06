@@ -157,8 +157,8 @@ export default function OptionHuntControls({
           >
             <CheckCircle2 className="h-3.5 w-3.5" />
             {liveArmed
-              ? `ARMED LIVE · ${best.symbol}`
-              : `ARMED DRY · ${best.symbol}`}
+              ? `IN SLOT LIVE · ${best.symbol}`
+              : `IN SLOT PAPER · ${best.symbol}`}
             {matched?.planId ? ` · ${String(matched.planId).slice(0, 8)}` : ""}
           </span>
         ) : null}
@@ -228,11 +228,11 @@ export default function OptionHuntControls({
           )}
         >
           {last && !last.ok
-            ? last.message
+            ? `Last arm attempt failed: ${last.message}`
             : liveArmed && cantAfford
-              ? `LIVE plan is in the slot, but open cannot fill — BP ${fmtUsd(bp)} vs ~$${debit} debit (NO_AFFORDABLE_OPTION). Add cash.`
+              ? `In the capital slot LIVE, but Robinhood cannot fill — BP ${fmtUsd(bp)} vs ~$${debit} debit. Add cash.`
               : last?.ok
-                ? `${last.live ? "LIVE" : "Preview"} accepted: ${last.message}`
+                ? `${last.live ? "LIVE" : "Preview"} accepted (armed ≠ filled): ${last.message}`
                 : cantAfford
                   ? `Buying power ${fmtUsd(bp)} is below ~$${debit} debit — Take LIVE will not fill until you add cash.`
                   : null}
