@@ -469,6 +469,34 @@ export type DeskOpenBrief = {
   tapeLead?: { symbol?: string; side?: string; changePct?: number; score?: number } | null;
   ramp?: Array<{ symbol: string; pnlPct?: number | null; marketValue?: number | null }>;
   protect?: Array<{ symbol: string; pnlPct?: number | null; marketValue?: number | null }>;
+  /** Channel-floor recovery day plays (bank partial at ~+5%, leave, flatten before close). */
+  recovery?: Array<{
+    symbol?: string;
+    pnlPct?: number | null;
+    play?: string | null;
+    entry?: number | null;
+    stop?: number | null;
+    target?: number | null;
+    plain?: string | null;
+    daySession?: {
+      bankPctAtPop?: number;
+      leavePct?: number;
+      noOvernight?: boolean;
+      flattenBeforeClose?: boolean;
+      plain?: string | null;
+    } | null;
+  }>;
+  breakouts?: Array<{
+    symbol?: string;
+    play?: string | null;
+    entry?: number | null;
+    plain?: string | null;
+  }>;
+  channelPlays?: {
+    note?: string | null;
+    recovery?: DeskOpenBrief["recovery"];
+    breakouts?: DeskOpenBrief["breakouts"];
+  } | null;
   steps?: Array<{ kind?: string; title?: string; detail?: string; symbols?: string[] }>;
   error?: string;
 };
@@ -657,6 +685,20 @@ export type DeskDayState = {
     } | null;
     topCallSymbol?: string | null;
     topPutSymbol?: string | null;
+  } | null;
+  /** Mechanical channel recovery / breakout day plays. */
+  channelPlays?: {
+    note?: string | null;
+    scanned?: number | null;
+    bestRecovery?: {
+      symbol?: string | null;
+      play?: string | null;
+      plain?: string | null;
+      daySession?: { bankPctAtPop?: number; leavePct?: number; plain?: string | null } | null;
+    } | null;
+    bestBreakout?: { symbol?: string | null; play?: string | null; plain?: string | null } | null;
+    recovery?: DeskOpenBrief["recovery"];
+    breakouts?: DeskOpenBrief["breakouts"];
   } | null;
   /** Latest NIM fusion entry decision (not a tape scoreboard). */
   lastDecisionAt?: string | null;
