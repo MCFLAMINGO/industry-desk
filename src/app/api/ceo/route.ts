@@ -114,6 +114,24 @@ export async function GET(req: NextRequest) {
     if (action === "desk-risk-off") {
       return await proxy("/api/ceo/desk-risk-off", {}, GET_TIMEOUT_MS);
     }
+    if (action === "ticker-intel") {
+      const symbol = req.nextUrl.searchParams.get("symbol")
+        || req.nextUrl.searchParams.get("ticker")
+        || "";
+      const full = req.nextUrl.searchParams.get("full");
+      const qs = new URLSearchParams();
+      if (symbol) qs.set("symbol", symbol);
+      if (full) qs.set("full", full);
+      const book = req.nextUrl.searchParams.get("book");
+      const news = req.nextUrl.searchParams.get("news");
+      if (book) qs.set("book", book);
+      if (news) qs.set("news", news);
+      return await proxy(
+        `/api/ceo/ticker-intel?${qs.toString()}`,
+        {},
+        45_000
+      );
+    }
     return NextResponse.json({ ok: false, error: "Unknown action" }, { status: 400 });
   } catch (err) {
     return fail(err);

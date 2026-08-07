@@ -1144,6 +1144,23 @@ export async function runRegimePass(): Promise<{ ok?: boolean; regime?: DeskRegi
   return readJson(res) as Promise<{ ok?: boolean; regime?: DeskRegime; error?: string }>;
 }
 
+/** RH-page-grade ticker intel (fundamentals / earnings / technicals + Yahoo/FINRA fillers). */
+export async function fetchTickerIntel(symbol: string, opts: { full?: boolean } = {}) {
+  const qs = new URLSearchParams({
+    action: "ticker-intel",
+    symbol: String(symbol || "").trim().toUpperCase(),
+  });
+  if (opts.full) qs.set("full", "1");
+  const res = await fetch(`/api/ceo?${qs}`, { cache: "no-store" });
+  return readJson(res) as Promise<{
+    ok?: boolean;
+    symbol?: string;
+    intel?: Record<string, unknown>;
+    gaps?: Record<string, string>;
+    error?: string;
+  }>;
+}
+
 /** Operator RISK OFF — close day longs; optionally flatten option shorts. */
 export async function runDeskRiskOff(input: {
   plain?: string;
