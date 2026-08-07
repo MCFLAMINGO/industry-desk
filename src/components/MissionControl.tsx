@@ -558,6 +558,41 @@ export default function MissionControl({
               />
             </div>
           ) : null}
+          {desk?.callPurchase?.extreme || desk?.callPurchase?.note ? (
+            <div className="mt-3 rounded-xl border border-[var(--line)] bg-[var(--sand)]/70 px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--teal-deep)]">
+                Option purchase tape
+                {desk.callPurchase.crowdedSide
+                  ? ` · ${desk.callPurchase.crowdedSide} chase`
+                  : ""}
+                {desk.callPurchase.phase ? ` · ${desk.callPurchase.phase}` : ""}
+              </p>
+              <p className="mt-1 text-sm font-semibold text-[var(--ink)]">
+                {(desk.callPurchase.callContractsPurchased ?? 0).toLocaleString()} calls
+                {" / "}
+                {(desk.callPurchase.putContractsPurchased ?? 0).toLocaleString()} puts
+                {desk.callPurchase.pcr != null ? ` · PCR ${desk.callPurchase.pcr}` : ""}
+                {desk.callPurchase.playMode ? ` · ${desk.callPurchase.playMode.replace(/_/g, " ")}` : ""}
+              </p>
+              <p className="mt-0.5 text-xs text-[var(--ink-soft)]">
+                {desk.callPurchase.contrarian?.plain
+                  || desk.callPurchase.note
+                  || "Recording call/put contracts traded — crowded side is contrarian."}
+              </p>
+            </div>
+          ) : null}
+          {(regime?.sellAftermath || regime?.warOver?.sellAftermath) ? (
+            <div className="mt-3 rounded-xl border border-amber-800/30 bg-amber-50/80 px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-950">
+                Sell the aftermath · war-over / peace
+              </p>
+              <p className="mt-1 text-xs text-amber-950/90">
+                {regime?.warOver?.plain
+                  || regime?.plain
+                  || "Ceasefire/peace chatter is sell-the-aftermath — do not buy the relief rally."}
+              </p>
+            </div>
+          ) : null}
         </div>
       </div>
 

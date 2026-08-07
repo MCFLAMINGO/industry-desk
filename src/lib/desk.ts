@@ -488,6 +488,14 @@ export type DeskRegime = {
   plain?: string;
   /** False when only headlines fired — agents must not act on chatter. */
   corroborated?: boolean;
+  /** War-over / ceasefire / peace = sell the aftermath, not dip-buy. */
+  sellAftermath?: boolean;
+  warOver?: {
+    score?: number;
+    sellAftermath?: boolean;
+    plain?: string | null;
+    headlines?: Array<{ title?: string; source?: string }>;
+  } | null;
   witnessKinds?: string[];
   topPlaybook?: {
     id?: string;
@@ -624,6 +632,31 @@ export type DeskDayState = {
       verdict?: string | null;
       tradeable?: boolean;
     }>;
+  } | null;
+  /**
+   * Call/put purchase tape — crowded side is contrarian.
+   * building = get opposite asymmetric early or wait; cresting = wait for crest then fade.
+   */
+  callPurchase?: {
+    note?: string | null;
+    callContractsPurchased?: number;
+    putContractsPurchased?: number;
+    pcr?: number | null;
+    crowdedSide?: "call" | "put" | null;
+    phase?: "building" | "cresting" | "cool" | string | null;
+    playMode?: "asymmetric_early" | "wait_crest" | "fade" | "watch" | string | null;
+    extreme?: boolean;
+    contrarian?: {
+      active?: boolean;
+      stance?: string | null;
+      crowdedSide?: string | null;
+      phase?: string | null;
+      mode?: string | null;
+      preferRight?: string | null;
+      plain?: string | null;
+    } | null;
+    topCallSymbol?: string | null;
+    topPutSymbol?: string | null;
   } | null;
   /** Latest NIM fusion entry decision (not a tape scoreboard). */
   lastDecisionAt?: string | null;
