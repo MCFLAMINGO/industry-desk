@@ -717,7 +717,7 @@ export default function DeskBoard() {
             </span>
           </p>
           <p className="mt-1 text-xs text-[var(--ink-soft)]">
-            See a hint, watch it, wait for week/month repeat — then fusion invents the larger-move plan.
+            Real when fusion/tape agrees. Regime-only echoes stay watching — they are not a trade plan.
           </p>
           <ul className="mt-2 space-y-2">
             {[
@@ -731,6 +731,7 @@ export default function DeskBoard() {
                   <p className="leading-snug">
                     <span className="mono text-xs uppercase text-[var(--teal-deep)]">
                       {h.status || "watching"}
+                      {h.echoOnly ? " · echo" : ""}
                       {h.symbol ? ` · ${h.symbol}` : ""}
                       {h.weekHits != null || h.monthHits != null
                         ? ` · w${h.weekHits || 0}/m${h.monthHits || 0}`
@@ -741,8 +742,13 @@ export default function DeskBoard() {
                   {h.watchFor ? (
                     <p className="mt-0.5 text-xs text-[var(--ink-soft)]">Watch for: {h.watchFor}</p>
                   ) : null}
-                  {h.status === "strategy_ready" && h.largerMove ? (
+                  {h.status === "strategy_ready" && !h.echoOnly && h.largerMove ? (
                     <p className="mt-0.5 text-xs text-[var(--ink-soft)]">Larger move: {h.largerMove}</p>
+                  ) : null}
+                  {h.echoOnly ? (
+                    <p className="mt-0.5 text-xs text-[var(--ink-soft)]">
+                      Regime self-echo — needs fusion/tape corroboration before it is a plan.
+                    </p>
                   ) : null}
                 </li>
               ))}

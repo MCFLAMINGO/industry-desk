@@ -328,6 +328,9 @@ export type DeskHint = {
   weekHits?: number;
   monthHits?: number;
   lastAt?: string;
+  /** Regime self-echo only — not a fusion-backed larger-move plan. */
+  echoOnly?: boolean;
+  sources?: string[];
 };
 
 export type DeskNewsletter = {
