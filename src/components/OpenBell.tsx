@@ -269,9 +269,29 @@ export default function OpenBell({
 
           <div className="rounded-2xl border border-[var(--line)] bg-[var(--sand)]/50 px-4 py-3">
             <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--danger)]">
-              <ShieldAlert className="h-3.5 w-3.5" /> Protect
+              <ShieldAlert className="h-3.5 w-3.5" />
+              {(brief.recovery || []).length ? "Recovery / protect" : "Protect"}
             </p>
-            {(brief.protect || []).length ? (
+            {(brief.recovery || []).length ? (
+              <ul className="mt-2 space-y-2">
+                {(brief.recovery || []).slice(0, 3).map((r) => (
+                  <li key={`rec-${r.symbol}`} className="text-sm">
+                    <span className="font-semibold text-[var(--ink)]">{r.symbol}</span>
+                    {r.pnlPct != null ? (
+                      <span className="ml-2 text-[var(--danger)]">{fmtPct(r.pnlPct)}</span>
+                    ) : null}
+                    <span className="mt-0.5 block text-xs leading-snug text-[var(--ink-soft)]">
+                      {(r.daySession?.plain || r.plain || "Channel-floor day session: bank ~60% at +5% pop, leave ~40%, flatten before close.").slice(0, 160)}
+                    </span>
+                  </li>
+                ))}
+                {(brief.protect || []).length ? (
+                  <li className="border-t border-[var(--line)] pt-2 text-xs text-[var(--ink-soft)]">
+                    Still protect mid-channel: {(brief.protect || []).slice(0, 3).map((p) => p.symbol).join(", ")}
+                  </li>
+                ) : null}
+              </ul>
+            ) : (brief.protect || []).length ? (
               <ul className="mt-2 space-y-1.5">
                 {(brief.protect || []).slice(0, 4).map((r) => (
                   <li key={r.symbol} className="flex items-center gap-2 text-sm">
